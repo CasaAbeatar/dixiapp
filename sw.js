@@ -1,12 +1,12 @@
 // Service worker de Dixiapp: cachea SOLO la interfaz (archivos estaticos de esta lista).
 // Nunca guarda datos de caja: cualquier otra peticion (por ejemplo Supabase) va directo a la red.
-const VERSION = 'dixiapp-interfaz-v3';
+const VERSION = 'dixiapp-interfaz-v5';
 const INTERFAZ = [
   './', './index.html', './estilos.css', './manifest.webmanifest',
   './src/app.js', './src/vistas.js', './src/vistas-compras.js', './src/vistas-bodega.js', './src/bodega.js', './src/ui.js', './vendor/supabase-js.js',
   './src/datos/index.js', './src/datos/interfaz.js', './src/datos/prueba.js', './src/datos/prueba-bodega.js', './src/datos/supabase.js',
   './src/datos/config.js', './src/datos/minimos-sugeridos.js', './sin-conexion.html', './src/datos/compras-calc.js', './src/datos/calculos.js', './src/datos/fechas.js', './src/datos/formato.js',
-  './iconos/icono-180.png', './iconos/icono-192.png', './iconos/icono-512.png', './iconos/icono-maskable-512.png',
+  './fotos/entrada.jpg', './fuentes/figtree-600.woff2', './iconos/icono-180.png', './iconos/icono-192.png', './iconos/icono-512.png', './iconos/icono-maskable-512.png',
 ];
 const permitidas = new Set(INTERFAZ.map((r) => new URL(r, self.location).pathname));
 

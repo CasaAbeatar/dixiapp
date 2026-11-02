@@ -1,6 +1,6 @@
 import { datos } from './datos/index.js';
 import { leerMonto, aplicarTema } from './ui.js';
-import { vistaPin, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas } from './vistas.js';
+import { vistaPin, vistaEntrada, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas } from './vistas.js';
 import { vistaCompras } from './vistas-compras.js';
 import { colones } from './datos/formato.js';
 import { estadoDiferencia, diferencia } from './datos/calculos.js';
@@ -30,6 +30,7 @@ async function pintar() {
     const html = await construir();
     if (yo !== pintando) return; // llego una pintura mas nueva
     raiz.innerHTML = html;
+    document.getElementById('a-pin')?.focus();
     if (s.usuario && s.pestana === 'Caja') actualizarDif();
     if (s.usuario && s.pestana === 'Bodega') despuesDePintar(raiz, s.bodega);
   } catch (e) {
@@ -79,6 +80,7 @@ async function construirCompras(hoy) {
 
 function vistaAccesoActual() {
   const nota = datos.esPrueba ? '<b>Modo de prueba, datos ficticios.</b><br>PIN del administrador: 1234. PIN del cajero: 4321.' : '';
+  if (datos.acceso === 'pin' && !datos.esPrueba) { const h = new Date().getHours(); return vistaEntrada({ saludo: h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches', pin: s.pin, error: s.errorPin }); }
   if (datos.acceso === 'pin') return vistaPin({ titulo: datos.esPrueba ? 'Dixiapp' : 'Dixia', ayuda: datos.esPrueba ? 'Escriba su PIN de 4 a 6 dígitos' : 'Escriba su clave de 4 números', pin: s.pin, error: s.errorPin, nota });
   if (s.acceso === 'sin_sesion') return vistaCorreo({ correo: s.correo, error: s.errorCorreo, cargando: s.cargando });
   const enlace = '<button class="enlace" style="margin-top:6px" data-accion="otra-cuenta">Entrar con otro correo</button>';
@@ -197,10 +199,16 @@ raiz.addEventListener('input', (ev) => {
   }
   if (id === 'f-motivo') s.form.motivo = ev.target.value;
   if (id === 'f-nota') s.form.nota = ev.target.value;
+  if (id === 'a-pin') {
+    s.pin = ev.target.value.replace(/\D/g, '').slice(0, 4); ev.target.value = s.pin; s.errorPin = '';
+    if (s.pin.length === 4) intentarPin();
+    return;
+  }
   if (id === 'a-correo') s.correo = ev.target.value;
 });
 raiz.addEventListener('change', (ev) => { if (ev.target.id === 'f-proveedor') { s.filtro.proveedor = ev.target.value; s.abierta = null; pintar(); } });
 raiz.addEventListener('submit', async (ev) => {
+  if (ev.target.dataset.form === 'pin') { ev.preventDefault(); if (s.pin.length === 4) intentarPin(); return; }
   if (ev.target.dataset.form !== 'correo') return;
   ev.preventDefault();
   s.correo = document.getElementById('a-correo').value; const clave = document.getElementById('a-clave').value;
