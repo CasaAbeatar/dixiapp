@@ -1,5 +1,10 @@
 apply plugin: 'com.android.application'
 
+// Firma de produccion: solo si existe android/keystore.properties (lo crea scripts/crear-llave-firma.sh en la Mac; esta en .gitignore).
+def propiedadesFirma = new Properties()
+def archivoFirma = rootProject.file('keystore.properties')
+if (archivoFirma.exists()) { archivoFirma.withInputStream { propiedadesFirma.load(it) } }
+
 android {
     namespace "com.dmalabomba.dixiapp"
     compileSdk rootProject.ext.compileSdkVersion
@@ -16,8 +21,19 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (archivoFirma.exists()) {
+            release {
+                storeFile file(propiedadesFirma['storeFile'])
+                storePassword propiedadesFirma['storePassword']
+                keyAlias propiedadesFirma['keyAlias']
+                keyPassword propiedadesFirma['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (archivoFirma.exists()) { signingConfig signingConfigs.release }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

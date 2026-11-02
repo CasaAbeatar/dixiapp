@@ -12,12 +12,21 @@ Estado: **construido** (version 1). Esta nota describe la arquitectura, que qued
 - Todo es un movimiento nuevo; nada se edita ni se borra (ajustes y conteos son contramovimientos).
 - Pruebas: datos (modo de prueba), cliente falso de Supabase (argumentos exactos hacia `fx_inv_*`) y flujo en navegador.
 
+## Segunda version (minimos, asignar, deshacer, notas, lotes, traslados)
+
+- Minimos: pestana Minimos (tabla articulo x lugar, guardado con `fx_inv_articulo_guardar`) y campo en cada articulo de Existencias. La **sugerencia** de 15 articulos de Local Soda (`web/src/datos/minimos-sugeridos.js`) se muestra aparte y solo se aplica con un toque de aprobacion.
+- Asignar articulo: en Recibir, cada linea sin equivalencia muestra la propuesta de la IA (`fx_ia_propuestas`, la mas reciente de Sonnet u Opus) con «Usar esta propuesta» o «Elegir otro articulo»; el factor se edita en la misma linea y Recibir recuerda la equivalencia (lo hace `fx_inv_recibir`).
+- Deshacer una recepcion (`fx_inv_recepcion_deshacer`, solo si el lote no se uso) y notas de credito (`fx_inv_notas_proveedor`, `fx_inv_nota_devolver`, `fx_inv_nota_ignorar`), dentro de Recibir.
+- Lotes y vencimientos: vencimiento opcional al recibir (`vence_en`), lotes por orden de vencimiento al tocar un articulo, alertas de vencidos con merma en dos toques.
+- Stock por local: chip «Todos los lugares» en Existencias. Traslados Bodega central a local: en Sacar, «Llenar lo que falta» y, desde Alertas, «Reponer desde la bodega».
+- Cada seccion abre con la linea de HOY. Los filtros y el buscador de cada seccion se conservan al cambiar de pestana.
+
 ## Que falta
 
 - Verificarlo contra la base real con una cuenta que sea administradora del facturador (no se pudo: no hay cuentas de produccion y las funciones del facturador exigen una sesion real). La forma exacta de la sugerencia de articulo en `fx_inv_pendientes` se leyo del codigo; se lee de forma tolerante.
-- Asignar articulo a una linea sin equivalencia (hoy se hace en el panel del facturador; la app lo avisa).
-- Definir minimos (`inv_minimos` esta vacia) y su pantalla.
-- Traslados entre locales con fechas de vencimiento por lote, deshacer una recepcion y notas de credito de proveedor (existen en el facturador: `fx_inv_recepcion_deshacer`, `fx_inv_nota_devolver`).
+- Aprobar la sugerencia de minimos (Emil) y fijar los de Pollos cuando haya compras reales.
+- Corregir la fecha de vencimiento de un lote ya recibido (el facturador no tiene funcion para eso; hoy se fija al recibir).
+- Verificar con cuenta real: la forma de `fx_inv_lotes`, `fx_inv_articulos` y `fx_inv_notas_proveedor` se leyo del codigo SQL y se lee de forma tolerante.
 - Operar con cajeros (hoy solo administradores).
 
 

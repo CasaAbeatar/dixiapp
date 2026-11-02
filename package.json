@@ -13,7 +13,11 @@
     "capturas": "node scripts/capturas.js",
     "cap:sync": "cap sync android",
     "apk:debug": "npm run cap:sync && cd android && ./gradlew assembleDebug",
-    "vendor": "esbuild scripts/supabase-entrada.js --bundle --format=esm --platform=browser --minify --target=es2020 --legal-comments=none --outfile=web/vendor/supabase-js.js"
+    "vendor": "esbuild scripts/supabase-entrada.js --bundle --format=esm --platform=browser --minify --target=es2020 --legal-comments=none --outfile=web/vendor/supabase-js.js",
+    "apk:marco": "node scripts/modo-apk.js marco && npx cap sync android",
+    "apk:completo": "node scripts/modo-apk.js completo && npx cap sync android",
+    "apk:estado": "node scripts/modo-apk.js estado",
+    "apk:release": "npm run cap:sync && cd android && ./gradlew assembleRelease bundleRelease"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",

@@ -3,5 +3,11 @@
   "appName": "Dixiapp",
   "webDir": "web",
   "backgroundColor": "#ffffff",
+  "server": {
+    "url": "https://dixiapp.dmalabomba.com",
+    "cleartext": false,
+    "errorPath": "sin-conexion.html",
+    "allowNavigation": ["dixiapp.dmalabomba.com", "dwlbcbtwdungyrykgahm.supabase.co"]
+  },
   "android": { "allowMixedContent": false }
 }

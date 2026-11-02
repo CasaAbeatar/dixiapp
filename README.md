@@ -48,6 +48,13 @@ Solo el esquema nuevo `dixi` (aditivo; no se toco `fact` ni ninguna tabla existe
 - El tipo de proveedor se calcula por el grupo de inventario que mas se le compra y se puede corregir en `dixi.proveedores.tipo_manual`.
 - Las facturas cuyo receptor no es la cedula de Soda o de Pollos no se muestran.
 
+## Publicar y firmar (todo preparado, nada ejecutado)
+
+- `docs/publicacion.md` y `scripts/publicar.sh`: GitHub Pages en dixiapp.dmalabomba.com (CNAME hacia casaabeatar.github.io). Falta el token y el DNS.
+- `docs/firma-apk.md` y `scripts/crear-llave-firma.sh`: llave de firma cifrada, para ejecutar en la Mac de Emil. No existe todavia.
+- APK marco o completo sin editar a mano: `npm run apk:marco`, `npm run apk:completo`, `npm run apk:estado`; firmado: `npm run apk:release`.
+- `docs/cuentas-y-seguridad.md`: usuarios de Emil y su hermana, y ajustes de seguridad pendientes.
+
 ## Estructura
 
 ```
@@ -67,7 +74,7 @@ web/                       lo que se sirve y lo que empaqueta Capacitor
     calculos.js, compras-calc.js, fechas.js, formato.js
 docs/                      esquema-dixi*.sql, reversion-dixi.sql, bodega.md, propuesta (obsoleta) esquema-supabase.sql
 tests/                     datos.test.js, supabase.test.js, flujo.e2e.js, rls.sql, rls-compras.sql
-scripts/                   servir, iconos, capturas, supabase-entrada.js
+scripts/                   servir, iconos, capturas, supabase-entrada.js, modo-apk.js, publicar.sh, crear-llave-firma.sh, apk/ (variantes marco y completo)
 android/                   proyecto Capacitor (Android)
 ```
 
