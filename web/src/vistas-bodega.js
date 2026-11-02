@@ -214,5 +214,5 @@ export function vistaMinimos({ b, articulos, ubicaciones, sugerencia, bajo }) {
   const cambios = Object.keys(b.minEdit).length;
   return `${cab}${sug}${buscador(b)}<section class="tarjeta" style="margin-top:12px"><div class="tabla-scroll"><table class="tabla tabla-min"><thead><tr><th>Artículo</th>${ubicaciones.map((u) => `<th>${esc(u.nombre)}</th>`).join('')}</tr></thead><tbody>${filas || `<tr><td colspan="${ubicaciones.length + 1}" class="vacio">No hay coincidencias.</td></tr>`}</tbody></table></div>
     <p class="pie">Los artículos con mínimo salen primero. Deje vacío o en 0 para quitar el mínimo.</p></section>
-    <div class="barra-accion"><button class="btn primario enorme-bar" data-accion="b-guardar-minimos" id="b-guardar-min" ${cambios ? '' : 'disabled'}>${cambios ? `Guardar ${pl(cambios, 'cambio', 'cambios')}` : 'Escriba un mínimo para guardar'}</button></div>`;
+    <div class="barra-accion" ${cambios ? '' : 'hidden'}><button class="btn primario enorme-bar" data-accion="b-guardar-minimos" id="b-guardar-min" ${cambios ? '' : 'disabled'}>${cambios ? `Guardar ${pl(cambios, 'cambio', 'cambios')}` : 'Escriba un mínimo para guardar'}</button></div>`;
 }

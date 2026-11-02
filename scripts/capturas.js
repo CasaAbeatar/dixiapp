@@ -6,12 +6,13 @@ import { fileURLToPath } from 'node:url';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const salida = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'capturas');
 const URL = process.env.URL_APP || 'http://127.0.0.1:8100/';
-const tamanos = [['telefono', 390, 844], ['tableta-vertical', 800, 1280], ['tableta-horizontal', 1280, 800], ['escritorio', 1440, 900]];
+// Tableta de 8,7" (1340x800 y 800x1340, mas el equivalente en dp 1005x600 y 600x1005) y de 11" (1280x800 y 800x1280)
+const tamanos = [['telefono', 390, 844], ['tableta87-horizontal', 1340, 800], ['tableta87-vertical', 800, 1340], ['tableta87-dp-horizontal', 1005, 600], ['tableta11-horizontal', 1280, 800], ['tableta11-vertical', 800, 1280], ['escritorio', 1440, 900]];
 fs.mkdirSync(salida, { recursive: true });
 for (const f of fs.readdirSync(salida)) if (f.endsWith('.png')) fs.unlinkSync(path.join(salida, f));
 const nav = await chromium.launch();
 for (const [nombre, w, h] of tamanos) for (const tema of ['light', 'dark']) {
-  if (tema === 'dark' && !nombre.startsWith('tableta')) continue;
+  if (tema === 'dark' && nombre !== 'tableta11-horizontal') continue;
   const ctx = await nav.newContext({ viewport: { width: w, height: h }, colorScheme: tema, locale: 'es-CR' });
   const p = await ctx.newPage(); await p.goto(URL);
   const suf = tema === 'dark' ? '-oscuro' : '';
@@ -33,12 +34,16 @@ for (const [nombre, w, h] of tamanos) for (const tema of ['light', 'dark']) {
   await p.locator('.factura').first().click(); await foto('compras-detalle', false);
   await p.click('[data-accion="por"][data-valor="semana"]'); if (tema === 'light') await foto('compras-semana');
   await tab('Bodega'); await p.waitForSelector('.secciones-bodega'); await foto('bodega-existencias');
-  await sec('recibir'); await foto('bodega-recibir');
+  await foto('bodega-existencias-pantalla', false);
+  await p.click('[data-accion="b-todos"]'); await foto('bodega-existencias-todos'); await p.click('[data-accion="b-todos"]');
+  await sec('recibir'); await foto('bodega-recibir'); await p.click('[data-accion="b-usar-propuesta"]'); await foto('bodega-recibir-asignada');
+  await p.click('[data-accion="b-sub"][data-valor="notas"]'); await p.click('[data-accion="b-nota-abrir"]'); await foto('bodega-notas'); await p.click('[data-accion="b-sub"][data-valor="pendientes"]');
   await sec('sacar'); const fp = p.locator('.paso', { hasText: 'Pollo entero' }); await fp.locator('[data-accion="b-mas"]').click({ clickCount: 1 }); await fp.locator('[data-accion="b-mas"]').click(); await foto('bodega-sacar');
   await sec('contar'); await p.click('text=Empezar conteo'); await p.waitForSelector('.b-cont'); await p.locator('.paso', { hasText: 'Tomate' }).locator('input').fill('4'); await foto('bodega-contar');
   await p.click('text=Revisar y confirmar'); await p.waitForSelector('text=Revisar antes de confirmar'); await foto('bodega-contar-revision');
   await p.click('[data-accion="b-volver-contar"]'); await p.click('[data-accion="b-pedir-cancelar"]'); await p.click('[data-accion="b-cancelar-conteo"]');
   await sec('alertas'); await foto('bodega-alertas');
+  await sec('minimos'); await foto('bodega-minimos'); await foto('bodega-minimos-pantalla', false);
   await tab('Cierres'); await foto('cierres');
   await tab('Más'); await foto('mas');
   await ctx.close();

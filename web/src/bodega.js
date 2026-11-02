@@ -66,7 +66,7 @@ function filtrarSelector(raiz, qa) {
 }
 function refrescarMinimos(raiz, b) {
   const boton = raiz.querySelector('#b-guardar-min'); if (!boton) return;
-  const c = Object.keys(b.minEdit).length; boton.disabled = c === 0; boton.textContent = c ? `Guardar ${c} ${c === 1 ? 'cambio' : 'cambios'}` : 'Escriba un mínimo para guardar';
+  const c = Object.keys(b.minEdit).length; boton.disabled = c === 0; boton.parentElement.hidden = c === 0; boton.textContent = c ? `Guardar ${c} ${c === 1 ? 'cambio' : 'cambios'}` : 'Escriba un mínimo para guardar';
 }
 function refrescarBarra(raiz, b) {
   const boton = raiz.querySelector('#b-guardar'); if (!boton) return;

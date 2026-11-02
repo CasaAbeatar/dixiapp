@@ -9,7 +9,8 @@ npm install
 npm run servir        # http://127.0.0.1:8100   (PUERTO=xxxx para otro puerto)
 npm test              # pruebas de datos y de la capa Supabase (con cliente falso, sin red)
 npm run test:e2e      # flujo en navegador real (servidor en marcha; Playwright; NODE_PATH=/opt/npm-tools/node_modules)
-npm run capturas      # capturas en capturas/ (telefono, tableta horizontal y vertical, escritorio)
+npm run capturas      # capturas en capturas/ (telefono, tabletas de 8,7" y 11" en horizontal y vertical, escritorio)
+node scripts/revision-legibilidad.js   # controles de 44 px o mas, letra de 14 px o mas y sin desborde, en 7 tamanos
 ```
 
 Modo de prueba: PIN 1234 (administrador: caja, compras, bodega, cierres) y PIN 4321 (cajero de prueba: solo caja ciega). Instalable como PWA ("Instalar app").
