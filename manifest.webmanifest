@@ -1,0 +1,53 @@
+{
+  "name": "Dixiapp",
+  "short_name": "Dixiapp",
+  "description": "Caja, compras y bodega de Grupo DMA La Bomba",
+  "lang": "es-CR",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "iconos/icono-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "iconos/icono-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "iconos/icono-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "id": "./",
+  "display_override": [
+    "standalone"
+  ],
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "dir": "ltr",
+  "shortcuts": [
+    {
+      "name": "Caja",
+      "url": "./index.html",
+      "icons": [
+        {
+          "src": "iconos/icono-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}
