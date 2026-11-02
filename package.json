@@ -2,21 +2,26 @@
   "name": "dixiapp",
   "version": "0.1.0",
   "private": true,
-  "description": "Dixiapp: app interna de caja de Grupo DMA La Bomba (primera version, solo datos de prueba)",
+  "description": "Dixiapp: app interna de Grupo DMA La Bomba (caja, compras y bodega)",
   "type": "module",
   "scripts": {
     "servir": "node scripts/servir.js",
     "iconos": "node scripts/generar-iconos.js",
     "iconos:android": "node scripts/generar-iconos-android.js",
-    "test": "node --test tests/datos.test.js",
+    "test": "node --test tests/datos.test.js tests/supabase.test.js",
     "test:e2e": "node tests/flujo.e2e.js",
     "capturas": "node scripts/capturas.js",
     "cap:sync": "cap sync android",
-    "apk:debug": "npm run cap:sync && cd android && ./gradlew assembleDebug"
+    "apk:debug": "npm run cap:sync && cd android && ./gradlew assembleDebug",
+    "vendor": "esbuild scripts/supabase-entrada.js --bundle --format=esm --platform=browser --minify --target=es2020 --legal-comments=none --outfile=web/vendor/supabase-js.js"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
     "@capacitor/cli": "^7.0.0",
-    "@capacitor/core": "^7.0.0"
+    "@capacitor/core": "^7.0.0",
+    "@supabase/supabase-js": "2.118.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }
