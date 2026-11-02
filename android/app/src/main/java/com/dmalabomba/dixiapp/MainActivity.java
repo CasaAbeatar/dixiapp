@@ -1,4 +1,4 @@
-package cr.dmalabomba.dixiapp;
+package com.dmalabomba.dixiapp;
 
 import com.getcapacitor.BridgeActivity;
 

@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "cr.dmalabomba.dixiapp"
+    namespace "com.dmalabomba.dixiapp"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "cr.dmalabomba.dixiapp"
+        applicationId "com.dmalabomba.dixiapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
