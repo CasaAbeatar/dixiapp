@@ -23,6 +23,18 @@ export function vistaPin({ titulo, ayuda, pin, error, textoEntrar = 'Entrar', no
   </div></div>`;
 }
 
+// Entrada personal de Dixia (modo real): foto a pantalla completa y panel de vidrio con un solo campo.
+export function vistaEntrada({ saludo, pin, error }) {
+  return `<div class="entrada"><div class="nombre-app"><div class="nombre-texto" aria-label="Dixiapp">Dixi<em>a</em>pp</div><div class="lema">¿Lista para cumplir tus sueños?</div></div><form class="entrada-panel" data-form="pin" autocomplete="off">
+    <div class="marca">Grupo DMA La Bomba</div>
+    <h1>${esc(saludo)}, Dixia</h1>
+    <label class="entrada-campo"><span>Tu clave</span>
+      <input type="password" id="a-pin" name="clave" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="Clave de 4 números" value="${esc(pin)}">
+    </label>
+    ${error ? `<p class="entrada-error" role="alert">${esc(error)}</p>` : ''}
+  </form></div>`;
+}
+
 export function vistaCorreo({ correo, error, cargando }) {
   return `<div class="acceso"><form class="acceso-caja" data-form="correo" autocomplete="on">
     <div class="marca">Grupo DMA La Bomba</div><h1>Dixiapp</h1>
