@@ -38,7 +38,7 @@ function almacenPorDefecto() {
   const m = new Map(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
 }
 
-export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), ahora = () => new Date(), cripto = globalThis.crypto } = {}) {
+export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), ahora = () => new Date(), cripto = globalThis.crypto, modoAcceso = 'correo', urlAcceso = '', llave = '', pedir = (...a) => globalThis.fetch(...a) } = {}) {
   if (!cliente) throw new Error('Falta el cliente de Supabase');
   const db = () => cliente.schema('dixi');
   const ok = ({ data, error }) => { if (error) throw fallo(error); return data; };
@@ -99,15 +99,33 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
 
   const api = {
     esPrueba: false,
-    acceso: 'correo',
+    acceso: modoAcceso,
     async hoy() { return hoy(); },
 
     async estadoAcceso() {
+      if (modoAcceso === 'pin') return desbloqueado && (await sesion()) ? 'abierta' : 'sin_sesion';
       const s = await sesion(); if (!s) return 'sin_sesion';
       if (!leerPin(s.user.id)) return 'crear_pin';
       return desbloqueado ? 'abierta' : 'bloqueada';
     },
-    async iniciarSesion({ correo, clave } = {}) {
+    async iniciarSesion({ correo, clave, pin } = {}) {
+      if (modoAcceso === 'pin') {
+        if (!/^\d{4}$/.test(String(pin))) return null;
+        let r, j;
+        try {
+          r = await pedir(urlAcceso, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: llave }, body: JSON.stringify({ pin: String(pin) }) });
+          j = await r.json().catch(() => ({}));
+        } catch { throw new Error('Sin conexión con el servidor. Revise el internet e intente de nuevo.'); }
+        if (r.status === 401) return null;
+        if (!r.ok || !j.ok) throw new Error(j.error || 'No se pudo entrar. Intente de nuevo en unos segundos.');
+        const { error } = await cliente.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
+        if (error) throw new Error('No se pudo abrir la sesión. Intente de nuevo.');
+        usuarioCache = null; desbloqueado = true;
+        const { data: ses } = await cliente.auth.getSession();
+        const u = await cargarUsuario(ses.session.user.id);
+        if (!u) { desbloqueado = false; await cliente.auth.signOut({ scope: 'local' }); throw new Error('Esta cuenta no tiene acceso a Dixiapp.'); }
+        return u;
+      }
       if (!correo || !clave) throw new Error('Escriba su correo y su contraseña.');
       const { data, error } = await cliente.auth.signInWithPassword({ email: String(correo).trim(), password: clave });
       if (error) throw fallo(error);
@@ -132,9 +150,9 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
       if (g.fallos >= MAX_FALLOS_PIN) { almacen.removeItem(claveLS(s.user.id)); desbloqueado = false; await cliente.auth.signOut({ scope: 'local' }); throw new Error('Demasiados intentos. Entre de nuevo con su correo.'); }
       almacen.setItem(claveLS(s.user.id), JSON.stringify(g)); return null;
     },
-    async bloquear() { desbloqueado = false; },
+    async bloquear() { desbloqueado = false; if (modoAcceso === 'pin') { usuarioCache = null; try { await cliente.auth.signOut({ scope: 'local' }); } catch { /* sin conexion: la sesion local igual queda cerrada */ } } },
     async sesionActual() { if ((await api.estadoAcceso()) !== 'abierta') return null; const s = await sesion(); return cargarUsuario(s.user.id); },
-    async cerrarSesion() { desbloqueado = false; usuarioCache = null; await cliente.auth.signOut(); },
+    async cerrarSesion() { desbloqueado = false; usuarioCache = null; await cliente.auth.signOut(modoAcceso === 'pin' ? { scope: 'local' } : undefined); },
 
     async negocios() { await exigir(); return ok(await db().from('negocios').select('id,nombre').order('nombre', { ascending: false })); },
     async horarios() {

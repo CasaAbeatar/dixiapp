@@ -8,6 +8,6 @@ async function crear() {
   const { createClient } = await import('../../vendor/supabase-js.js');
   const { crearDatosSupabase } = await import('./supabase.js');
   const cliente = createClient(CONFIG.url, CONFIG.llave, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
-  return crearDatosSupabase({ cliente });
+  return crearDatosSupabase({ cliente, modoAcceso: 'pin', urlAcceso: `${CONFIG.url}/functions/v1/dixi-acceso`, llave: CONFIG.llave });
 }
 export const datos = await crear();

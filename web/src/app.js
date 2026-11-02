@@ -79,7 +79,7 @@ async function construirCompras(hoy) {
 
 function vistaAccesoActual() {
   const nota = datos.esPrueba ? '<b>Modo de prueba, datos ficticios.</b><br>PIN del administrador: 1234. PIN del cajero: 4321.' : '';
-  if (datos.acceso === 'pin') return vistaPin({ titulo: 'Dixiapp', ayuda: 'Escriba su PIN de 4 a 6 dígitos', pin: s.pin, error: s.errorPin, nota });
+  if (datos.acceso === 'pin') return vistaPin({ titulo: datos.esPrueba ? 'Dixiapp' : 'Dixia', ayuda: datos.esPrueba ? 'Escriba su PIN de 4 a 6 dígitos' : 'Escriba su clave de 4 números', pin: s.pin, error: s.errorPin, nota });
   if (s.acceso === 'sin_sesion') return vistaCorreo({ correo: s.correo, error: s.errorCorreo, cargando: s.cargando });
   const enlace = '<button class="enlace" style="margin-top:6px" data-accion="otra-cuenta">Entrar con otro correo</button>';
   if (s.acceso === 'crear_pin') {
@@ -123,7 +123,7 @@ async function intentarPin() {
   try {
     if (datos.acceso === 'pin') {
       const u = await datos.iniciarSesion({ pin: s.pin });
-      if (!u) { s.errorPin = 'PIN incorrecto. Intente de nuevo.'; s.pin = ''; } else await entrarConUsuario(u);
+      if (!u) { s.errorPin = datos.esPrueba ? 'PIN incorrecto. Intente de nuevo.' : 'Clave incorrecta. Intente de nuevo.'; s.pin = ''; } else await entrarConUsuario(u);
     } else if (s.acceso === 'crear_pin') {
       if (s.faseCrear === 'nuevo') { s.pin1 = s.pin; s.pin = ''; s.faseCrear = 'confirmar'; }
       else if (s.pin !== s.pin1) { s.errorPin = 'Los PIN no coinciden. Empiece de nuevo.'; s.pin = ''; s.pin1 = ''; s.faseCrear = 'nuevo'; }
@@ -153,7 +153,7 @@ raiz.addEventListener('click', async (ev) => {
   const a = el.dataset.accion, v = el.dataset.valor;
   if (s.usuario && s.pestana === 'Bodega' && await accionBodega(a, v, { datos, b: s.bodega, raiz, repintar: pintar, el })) return;
   try {
-    if (a === 'digito') { if (s.pin.length < 6) s.pin += v; s.errorPin = ''; return pintar(); }
+    if (a === 'digito') { if (s.pin.length < (datos.esPrueba ? 6 : 4)) s.pin += v; s.errorPin = ''; return pintar(); }
     if (a === 'borrar') { s.pin = s.pin.slice(0, -1); return pintar(); }
     if (a === 'entrar') return intentarPin();
     if (a === 'otra-cuenta') { await datos.cerrarSesion(); await evaluarAcceso(); return pintar(); }

@@ -246,3 +246,25 @@ test('bodega: un cajero no llega a las funciones del inventario', async () => {
   for (const f of [() => d.bodegaExistencias({}), () => d.bodegaAlertas(), () => d.bodegaSalida({ tipo: 'consumo', ubicacion: 'u', items: [], motivo: 'x' })]) await assert.rejects(f, /No autorizado/);
   assert.equal(cl.llamadas.some((l) => l.publico), false);
 });
+
+test('modo clave de 4 numeros: entra por el servicio de acceso, no guarda nada local y se bloquea', async () => {
+  const cl = falso(base(ADMIN));
+  let sesion = null; const pedidas = [];
+  cl.auth.setSession = async ({ access_token }) => { sesion = { user: { id: 'u1' } }; cl.llamadas.push({ setSession: access_token }); return { error: null }; };
+  cl.auth.getSession = async () => ({ data: { session: sesion } });
+  cl.auth.signOut = async (o) => { sesion = null; cl.llamadas.push({ signOut: o }); return { error: null }; };
+  const respuestas = [{ status: 401, ok: false, j: { ok: false, error: 'Clave incorrecta.' } }, { status: 429, ok: false, j: { ok: false, error: 'Espere 5 segundos e intente de nuevo.' } }, { status: 200, ok: true, j: { ok: true, access_token: 'a', refresh_token: 'r' } }];
+  const pedir = async (url, o) => { pedidas.push({ url, cuerpo: JSON.parse(o.body), llave: o.headers.apikey }); const r = respuestas.shift(); return { status: r.status, ok: r.ok, json: async () => r.j }; };
+  const al = mem();
+  const d = crearDatosSupabase({ cliente: cl, almacen: al, modoAcceso: 'pin', urlAcceso: 'https://x/functions/v1/dixi-acceso', llave: 'pub', pedir });
+  assert.equal(d.acceso, 'pin'); assert.equal(await d.estadoAcceso(), 'sin_sesion');
+  assert.equal(await d.iniciarSesion({ pin: '12' }), null); assert.equal(pedidas.length, 0);
+  assert.equal(await d.iniciarSesion({ pin: '1111' }), null);
+  await assert.rejects(() => d.iniciarSesion({ pin: '2222' }), /Espere 5 segundos/);
+  const u = await d.iniciarSesion({ pin: '3333' });
+  assert.equal(u.rol, 'administrador'); assert.equal(await d.estadoAcceso(), 'abierta');
+  assert.deepEqual(pedidas.map((p) => p.cuerpo), [{ pin: '1111' }, { pin: '2222' }, { pin: '3333' }]); assert.equal(pedidas[0].llave, 'pub');
+  assert.equal(al.m.size, 0);
+  await d.bloquear(); assert.equal(await d.estadoAcceso(), 'sin_sesion');
+  assert.ok(cl.llamadas.some((l) => l.signOut && l.signOut.scope === 'local'));
+});
