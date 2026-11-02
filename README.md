@@ -40,7 +40,7 @@ El service worker guarda en cache solo la interfaz (lista cerrada de archivos). 
 
 ## Compilar el APK de depuracion
 
-Requisitos: Node 22, Java 17 o 21, Android SDK (plataforma 35 y build-tools 35).
+Requisitos: Node 22, Java 21, Android SDK (plataforma 36). Versiones del proyecto: Android Gradle Plugin 8.13.0, Gradle 8.14.3, compileSdk y targetSdk 36, minSdk 23, Capacitor 7.
 
 ```
 npm install
@@ -52,7 +52,7 @@ Resultado: `android/app/build/outputs/apk/debug/app-debug.apk`. Instalarlo en la
 
 Sin Android SDK local: subir el proyecto a un repositorio de GitHub y ejecutar el flujo "Compilar APK de depuracion" (pestaña Actions, boton Run workflow). El APK queda como artefacto descargable.
 
-Icono de Android: el proyecto usa el icono por defecto de Capacitor. Para usar el de Dixiapp: copiar `web/iconos/icono-512.png` a `resources/icon.png` y correr `npx @capacitor/assets generate --android`.
+Icono de Android: ya es el de Dixiapp (simbolo de colon sobre azul), generado con `npm run iconos:android` a partir del mismo dibujo de la PWA. Nota: `npx cap sync` vuelve a escribir `android/capacitor-cordova-android-plugins/build.gradle` con el plugin 8.7.2 de la plantilla; es inofensivo, pero si se quiere uniformidad se vuelve a poner 8.13.0.
 
 ## Llave de firma (version de produccion)
 

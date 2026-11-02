@@ -7,6 +7,7 @@
   "scripts": {
     "servir": "node scripts/servir.js",
     "iconos": "node scripts/generar-iconos.js",
+    "iconos:android": "node scripts/generar-iconos-android.js",
     "test": "node --test tests/datos.test.js",
     "test:e2e": "node tests/flujo.e2e.js",
     "capturas": "node scripts/capturas.js",

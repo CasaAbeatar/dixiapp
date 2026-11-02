@@ -7,3 +7,11 @@ android/local.properties
 *.keystore
 keystore.properties
 .env
+local.properties
+.gradle/
+.idea/
+*.apk
+*.aab
+*.p12
+*.pem
+google-services.json
