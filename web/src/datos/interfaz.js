@@ -48,8 +48,8 @@ export const METODOS = [
   'bodegaUbicaciones',    // () => [{id, nombre, tipo: 'bodega'|'local'}]
   'bodegaExistencias',    // ({ubicacion, q}) => [{articuloId, articulo, categoria, unidad, ubicacionId, ubicacion, cantidad, minimo, bajoMinimo, vencida, proximoVencimiento}]
   'bodegaAlertas',        // () => {bajoMinimo:[...], vencenPronto:[...], vencidos:[...], porRecibir}
-  'bodegaPorRecibir',     // () => [{clave, proveedor, fecha, empresa, total, lineas:[{linea, descripcion, cantidad, unidad, sugerencia: {articuloId, articulo, factor, unidad}|null}]}]
-  'bodegaRecibir',        // ({lineas:[{clave, linea, articuloId, factor}]}) => {recibidas}
+  'bodegaPorRecibir',     // () => [{clave, proveedor, fecha, empresa, total, lineas:[{linea, descripcion, cantidad, unidad, sugerencia: {articuloId, articulo, factor, unidad}|null, propuesta: {articuloId, articulo, factor, unidad, nivel, razon, modelo}|null}]}]
+  'bodegaRecibir',        // ({lineas:[{clave, linea, articuloId, factor, venceEn?}]}) => {recibidas}   (articuloId distinto del sugerido = asignar; el facturador lo recuerda)
   'bodegaSalida',         // ({tipo:'consumo'|'merma'|'devolucion', ubicacion, items:[{articuloId, cantidad}], motivo}) => {valor}
   'bodegaTrasladar',      // ({origen, destino, items, motivo}) => {}
   'bodegaConteo',         // (ubicacion) => Conteo | null   Conteo {id, ubicacion, ubicacionId, estado, contadas, total, lineas:[{articuloId, articulo, categoria, unidad, contado, diferencia}]}
@@ -59,6 +59,15 @@ export const METODOS = [
   'bodegaConteoCancelar', // (conteoId, motivo) => void
   'bodegaAjustar',        // ({ubicacion, items:[{articuloId, cantidadReal}], motivo}) => {ajustes:[{articulo, antes, despues, diferencia}]}
   'bodegaMovimientos',    // ({ubicacion, limite}) => [{id, tipo, tipoNombre, articulo, unidad, cantidad, ubicacion, motivo, usuario, fecha, hora}]
+  'bodegaArticulos',      // ({q}) => [{id, nombre, categoria, unidad, existencia, minimos:{[ubicacionId]: numero}}]  (catalogo para elegir y para fijar minimos)
+  'bodegaFijarMinimos',   // ({items:[{articuloId, ubicacionId, minimo}]}) => {guardados}   (minimo 0 = sin minimo)
+  'bodegaSugerenciaMinimos', // () => {nota, items:[{articuloId, articulo, ubicacionId, ubicacion, minimo, porSemana, unidad}]}  SOLO sugerencia: no aplica nada
+  'bodegaLotes',          // ({articulo, ubicacion}) => [{id, articuloId, articulo, unidad, ubicacion, cantidad, inicial, venceEn, dias, vencido, entrada, origen}]
+  'bodegaRecibidas',      // ({limite}) => [{clave, linea, proveedor, descripcion, articulo, unidad, cantidad, ubicacion, fecha, deshacible}]  (recepciones que se pueden deshacer)
+  'bodegaDeshacerRecepcion', // ({clave, linea, motivo}) => {clave, linea}   (contramovimiento; solo si el lote no se uso)
+  'bodegaNotas',          // ({estado}) => [{clave, tipo, proveedor, fecha, empresa, total, estado, lineas:[{linea, descripcion, cantidad, unidad, articuloId, articulo, factor}]}]
+  'bodegaNotaDevolver',   // ({clave, ubicacion, items:[{articuloId, cantidad}], motivo}) => {items}   (salida por devolucion ligada a la nota de credito)
+  'bodegaNotaIgnorar',    // ({clave, motivo}) => void   («no afecta el inventario»)
   'restablecerPrueba',    // () => void (solo implementacion de prueba)
 ];
 

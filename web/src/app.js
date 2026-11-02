@@ -54,7 +54,7 @@ async function construir() {
   } else if (s.pestana === 'Compras' && esAdmin()) {
     contenido = await construirCompras(hoy); titulo = { nombre: 'Compras' };
   } else if (s.pestana === 'Bodega' && esAdmin()) {
-    contenido = await construirBodega(datos, s.bodega); titulo = { nombre: 'Bodega' };
+    contenido = await construirBodega(datos, s.bodega, hoy); titulo = { nombre: 'Bodega' };
   } else {
     contenido = vistaMas({ usuario: s.usuario, tema: s.tema, horarios: await datos.horarios(), esAdmin: esAdmin(), esPrueba: datos.esPrueba, conBloqueo: !datos.esPrueba, negocios: s.negocios });
     titulo = s.negocios.find((n) => n.id === s.negocioId);
@@ -151,7 +151,7 @@ const sumarDiasTexto = (t, n) => { const d = new Date(`${t}T12:00:00`); d.setDat
 raiz.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-accion]'); if (!el) return;
   const a = el.dataset.accion, v = el.dataset.valor;
-  if (s.usuario && s.pestana === 'Bodega' && await accionBodega(a, v, { datos, b: s.bodega, raiz, repintar: pintar })) return;
+  if (s.usuario && s.pestana === 'Bodega' && await accionBodega(a, v, { datos, b: s.bodega, raiz, repintar: pintar, el })) return;
   try {
     if (a === 'digito') { if (s.pin.length < 6) s.pin += v; s.errorPin = ''; return pintar(); }
     if (a === 'borrar') { s.pin = s.pin.slice(0, -1); return pintar(); }

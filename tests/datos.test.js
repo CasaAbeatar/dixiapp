@@ -174,7 +174,7 @@ test('bodega: solo administradores; existencias por lugar con minimos y alertas'
   assert.ok(ls.every((f) => f.ubicacionId === 'ls')); assert.ok(ls.some((f) => f.bajoMinimo));
   assert.equal((await d.bodegaExistencias({ q: 'pech' })).every((f) => /pech/i.test(f.articulo)), true);
   const al = await d.bodegaAlertas();
-  assert.ok(al.bajoMinimo.length >= 2); assert.ok(al.vencenPronto.length >= 1); assert.ok(al.vencidos.length >= 1); assert.equal(al.porRecibir, 6);
+  assert.ok(al.bajoMinimo.length >= 2); assert.ok(al.vencenPronto.length >= 1); assert.ok(al.vencidos.length >= 1); assert.equal(al.porRecibir, 7);
   assert.ok(al.bajoMinimo.every((x) => x.existencia < x.minimo));
 });
 
@@ -225,4 +225,64 @@ test('bodega: conteo fisico y ajuste directo dejan movimientos nuevos, sin tocar
   const aj = await d.bodegaAjustar({ ubicacion: 'bc', items: [{ articuloId: 'arroz', cantidadReal: 45 }], motivo: 'Recuento rápido' });
   assert.equal(aj.ajustes[0].diferencia, -5);
   await assert.rejects(() => d.bodegaAjustar({ ubicacion: 'bc', items: [{ articuloId: 'arroz', cantidadReal: 1 }], motivo: 'x' }), /motivo/);
+});
+
+test('bodega: minimos por articulo y lugar, y sugerencia que no se aplica sola', async () => {
+  const d = await admin();
+  const sug = await d.bodegaSugerenciaMinimos(); assert.ok(sug.items.length >= 1);
+  const antes = (await d.bodegaArticulos({})).find((a) => a.id === 'cola').minimos;
+  assert.deepEqual(antes, { bc: 48, ls: 24, lp: 24 }); // ver la sugerencia no cambia nada
+  await d.bodegaFijarMinimos({ items: [{ articuloId: 'cola', ubicacionId: 'ls', minimo: 60 }, { articuloId: 'agua', ubicacionId: 'lp', minimo: 0 }] });
+  const art = await d.bodegaArticulos({}); assert.equal(art.find((a) => a.id === 'cola').minimos.ls, 60); assert.equal(art.find((a) => a.id === 'agua').minimos.lp, undefined);
+  assert.equal((await d.bodegaExistencias({ ubicacion: 'ls' })).find((x) => x.articuloId === 'cola').minimo, 60);
+  await assert.rejects(() => d.bodegaFijarMinimos({ items: [{ articuloId: 'cola', ubicacionId: 'ls', minimo: -1 }] }), /número, 0 o más/);
+  await assert.rejects(() => d.bodegaFijarMinimos({ items: [] }), /No hay mínimos/);
+});
+
+test('bodega: linea sin equivalencia trae propuesta de la IA y se recibe al asignarla; el vencimiento queda en el lote', async () => {
+  const d = await admin();
+  const f2 = (await d.bodegaPorRecibir()).find((f) => f.clave === 'F-0002'); const l3 = f2.lineas.find((l) => l.linea === 3);
+  assert.equal(l3.sugerencia, null); assert.equal(l3.propuesta.articuloId, 'culantro'); assert.equal(l3.propuesta.nivel, 'amarillo');
+  await assert.rejects(() => d.bodegaRecibir({ lineas: [{ clave: 'F-0002', linea: 3, articuloId: 'culantro', venceEn: '2020-01-01' }] }), /ya pasó/);
+  await d.bodegaRecibir({ lineas: [{ clave: 'F-0002', linea: 3, articuloId: 'culantro', factor: l3.propuesta.factor, venceEn: '2026-11-06' }] });
+  assert.equal((await d.bodegaExistencias({ ubicacion: 'bc' })).find((x) => x.articuloId === 'culantro').cantidad, 12);
+  const lotes = await d.bodegaLotes({ articulo: 'culantro' }); assert.equal(lotes[0].venceEn, '2026-11-06'); assert.equal(lotes[0].vencido, false);
+});
+
+test('bodega: deshacer una recepcion es un contramovimiento y solo si el lote no se uso', async () => {
+  const d = await admin();
+  await d.bodegaRecibir({ lineas: [{ clave: 'F-0001', linea: 1, articuloId: 'pollo', factor: 1 }] });
+  const rec = (await d.bodegaRecibidas({})).find((r) => r.clave === 'F-0001'); assert.equal(rec.deshacible, true);
+  const stock = async () => (await d.bodegaExistencias({ ubicacion: 'bc' })).find((x) => x.articuloId === 'pollo').cantidad;
+  const antes = await stock();
+  await assert.rejects(() => d.bodegaDeshacerRecepcion({ clave: 'F-0001', linea: 1, motivo: 'x' }), /motivo/);
+  await d.bodegaDeshacerRecepcion({ clave: 'F-0001', linea: 1, motivo: 'Se recibió por error' });
+  assert.equal(await stock(), antes - 40); assert.equal((await d.bodegaMovimientos({ limite: 1 }))[0].tipo, 'anulacion_entrada');
+  assert.ok((await d.bodegaPorRecibir()).find((f) => f.clave === 'F-0001').lineas.some((l) => l.linea === 1)); // vuelve a quedar por recibir
+  await assert.rejects(() => d.bodegaDeshacerRecepcion({ clave: 'F-0001', linea: 1, motivo: 'Otra vez' }), /no está recibida/);
+  await d.bodegaRecibir({ lineas: [{ clave: 'F-0001', linea: 1, articuloId: 'pollo', factor: 1 }] });
+  await d.bodegaSalida({ tipo: 'consumo', ubicacion: 'bc', items: [{ articuloId: 'pollo', cantidad: 1 }], motivo: 'Uso del día' });
+  assert.equal((await d.bodegaRecibidas({})).find((r) => r.clave === 'F-0001').deshacible, false);
+  await assert.rejects(() => d.bodegaDeshacerRecepcion({ clave: 'F-0001', linea: 1, motivo: 'Tarde' }), /Ya se usó/);
+});
+
+test('bodega: nota de credito de proveedor devuelve mercaderia una sola vez', async () => {
+  const d = await admin();
+  const [nt] = await d.bodegaNotas({}); assert.equal(nt.clave, 'N-0001'); assert.equal(nt.lineas[0].articuloId, 'pollo');
+  const stock = async () => (await d.bodegaExistencias({ ubicacion: 'bc' })).find((x) => x.articuloId === 'pollo').cantidad;
+  const antes = await stock();
+  await d.bodegaNotaDevolver({ clave: 'N-0001', ubicacion: 'bc', items: [{ articuloId: 'pollo', cantidad: 5 }], motivo: 'Nota de crédito' });
+  assert.equal(await stock(), antes - 5); assert.equal((await d.bodegaMovimientos({ limite: 1 }))[0].tipo, 'devolucion');
+  assert.equal((await d.bodegaNotas({})).length, 0);
+  await assert.rejects(() => d.bodegaNotaDevolver({ clave: 'N-0001', ubicacion: 'bc', items: [{ articuloId: 'pollo', cantidad: 1 }] }), /ya se devolvió/);
+});
+
+test('bodega: stock por local tras un traslado de bodega central a local (llenar hasta el minimo)', async () => {
+  const d = await admin();
+  const lp = async () => (await d.bodegaExistencias({ ubicacion: 'lp' })).find((x) => x.articuloId === 'pollo').cantidad;
+  await d.bodegaFijarMinimos({ items: [{ articuloId: 'pollo', ubicacionId: 'lp', minimo: 60 }] });
+  const f = (await d.bodegaExistencias({ ubicacion: 'lp' })).find((x) => x.articuloId === 'pollo'); assert.equal(f.bajoMinimo, true);
+  await d.bodegaTrasladar({ origen: 'bc', destino: 'lp', items: [{ articuloId: 'pollo', cantidad: f.minimo - f.cantidad }] });
+  assert.equal(await lp(), 60); assert.equal((await d.bodegaExistencias({ ubicacion: 'lp' })).find((x) => x.articuloId === 'pollo').bajoMinimo, false);
+  assert.ok((await d.bodegaAlertas()).bajoMinimo.every((a) => a.ubicacionId));
 });

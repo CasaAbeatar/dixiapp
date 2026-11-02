@@ -109,21 +109,33 @@ await sinDesborde();
 
 // Bodega
 await tab('Bodega'); await p.waitForSelector('.secciones-bodega');
-assert.equal((await p.locator('.seccion').allTextContents()).map((t) => t.replace(/\d+$/, '')).join('|'), 'Existencias|Recibir|Sacar|Contar|Alertas'); paso('Bodega: Existencias, Recibir, Sacar, Contar y Alertas');
+assert.equal((await p.locator('.seccion').allTextContents()).map((t) => t.replace(/\d+$/, '')).join('|'), 'Existencias|Recibir|Sacar|Contar|Alertas|Mínimos'); paso('Bodega: Existencias, Recibir, Sacar, Contar, Alertas y Mínimos');
 assert.match(await p.textContent('.selector-negocio'), /Bodega central[\s\S]*Local Soda[\s\S]*Local Pollos/);
 assert.ok(await p.locator('.fila-art').count() > 15); const polloBC0 = num(await p.locator('.art', { hasText: 'Pollo entero' }).locator('.a-cant').textContent());
 await p.fill('#b-q', 'pech'); assert.equal(await p.locator('.art:visible').count(), 1); await p.fill('#b-q', ''); paso('Existencias por lugar con buscador');
 await p.click('.selector-negocio >> text=Local Soda'); assert.ok(await p.locator('.fila-art.bajo').count() >= 1); await p.click('.selector-negocio >> text=Bodega central'); paso('Se marca lo que está bajo el mínimo');
 // Alertas
-await p.click('[data-accion="b-sec"][data-valor="alertas"]'); assert.match(await p.textContent('main'), /Bajo el mínimo[\s\S]*Por vencer[\s\S]*Vencidos/);
+await p.click('[data-accion="b-sec"][data-valor="alertas"]'); assert.match(await p.textContent('main'), /Vencidos[\s\S]*Por vencer[\s\S]*Bajo el mínimo/);
 assert.ok(await p.locator('.cuenta').count() >= 1); paso('Alertas de mínimos y vencimientos con contador');
 // Recibir desde factura
 await p.click('[data-accion="b-sec"][data-valor="recibir"]'); const porRecibir0 = await p.locator('main .tarjeta h3').count(); assert.equal(porRecibir0, 3);
-assert.match(await p.textContent('main'), /Falta asignarle un artículo/);
+assert.match(await p.textContent('main'), /La IA propone[\s\S]*Culantro/); assert.match(await p.textContent('main'), /Hoy[\s\S]*Antes de hoy/);
 await p.click('[data-accion="b-recibir"][data-valor="F-0001"]'); await p.waitForSelector('.aviso'); assert.match(await p.textContent('.aviso'), /Recibido: 2 líneas/);
 assert.equal(await p.locator('main .tarjeta h3').count(), 2); paso('Recibir una factura con un toque; las líneas sin artículo quedan pendientes');
 await p.click('[data-accion="b-sec"][data-valor="existencias"]');
 assert.equal(num(await p.locator('.art', { hasText: 'Pollo entero' }).locator('.a-cant').textContent()), polloBC0 + 40); assert.match(await p.textContent('main'), /Entrada por factura/); paso('La entrada suma a la bodega y queda en movimientos');
+// Asignar una linea sin equivalencia con la propuesta de la IA, recibirla, deshacerla y devolver con nota de credito
+await p.click('[data-accion="b-sec"][data-valor="recibir"]'); await p.click('[data-accion="b-usar-propuesta"]'); assert.match(await p.textContent('main'), /Entra como[\s\S]*Culantro/);
+await p.fill('.b-factor', '2'); assert.match(await p.textContent('.asignada .res'), /24/);
+await p.click('[data-accion="b-recibir"][data-valor="F-0002"]'); await p.waitForSelector('.aviso'); assert.match(await p.textContent('.aviso'), /Recibido: 3 líneas/); paso('Línea sin equivalencia: se usa la propuesta de la IA y se recibe en el mismo lugar');
+await p.click('[data-accion="b-sub"][data-valor="recibidas"]'); await p.locator('[data-accion="b-pedir-deshacer"]').first().click(); await p.click('[data-accion="b-deshacer"]'); await p.waitForSelector('.aviso'); assert.match(await p.textContent('.aviso'), /Recepción deshecha/);
+await p.click('[data-accion="b-sub"][data-valor="pendientes"]'); assert.match(await p.textContent('main'), /Culantro manojo/); paso('Deshacer una recepción: la línea vuelve a quedar por recibir');
+await p.click('[data-accion="b-sub"][data-valor="notas"]'); await p.click('[data-accion="b-nota-abrir"]'); await p.click('[data-accion="b-nota-devolver"]'); await p.waitForSelector('.aviso'); assert.match(await p.textContent('.aviso'), /Devolución registrada/); paso('Nota de crédito de proveedor: devolución en dos toques');
+// Minimos y stock por local
+await p.click('[data-accion="b-sec"][data-valor="minimos"]'); assert.match(await p.textContent('main'), /Sugerencia para aprobar[\s\S]*Todavía no se ha aplicado/);
+await p.locator('.b-min').first().fill('77'); assert.equal(await p.isDisabled('#b-guardar-min'), false); await p.click('#b-guardar-min'); await p.waitForSelector('.aviso'); assert.match(await p.textContent('.aviso'), /Mínimos guardados/); paso('Mínimos por artículo y lugar, con sugerencia que se aprueba aparte');
+await p.click('[data-accion="b-sec"][data-valor="existencias"]'); await p.click('[data-accion="b-todos"]'); assert.ok(await p.locator('.tabla-lugares tbody tr').count() > 15); assert.match(await p.textContent('.tabla-lugares thead'), /Bodega central[\s\S]*Local Soda[\s\S]*Local Pollos/); await p.click('[data-accion="b-todos"]'); paso('Existencias de todos los lugares lado a lado');
+await p.click('[data-accion="b-sec"][data-valor="existencias"]');
 // Sacar (consumo) y trasladar
 await p.click('[data-accion="b-sec"][data-valor="sacar"]'); assert.equal(await p.isDisabled('#b-guardar'), true);
 const filaPollo = p.locator('.paso', { hasText: 'Pollo entero' });
@@ -152,7 +164,7 @@ await p.click('[data-accion="b-pedir-cancelar"]'); await p.click('[data-accion="
 await sinDesborde();
 
 // Tableta horizontal, telefono
-for (const [w, h] of [[1280, 800], [390, 844]]) { await p.setViewportSize({ width: w, height: h }); await sinDesborde(); }
+for (const [w, h] of [[1340, 800], [1005, 600], [600, 1005], [1280, 800], [390, 844]]) { await p.setViewportSize({ width: w, height: h }); await sinDesborde(); }
 await p.setViewportSize({ width: 800, height: 1280 }); paso('Sin desplazamiento horizontal en tableta (vertical y horizontal) ni teléfono');
 
 // Persistencia

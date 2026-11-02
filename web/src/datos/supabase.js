@@ -5,6 +5,7 @@
 import { validarImplementacion } from './interfaz.js';
 import { horaLegible, lunesDe, sumarDias } from './fechas.js';
 import { resumenDesdeDias, desdeResumen } from './compras-calc.js';
+import { SUGERENCIA_MINIMOS } from './minimos-sugeridos.js';
 
 const ZONA = 'America/Costa_Rica';
 const ITERACIONES = 150000;
@@ -270,16 +271,24 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
     },
     async bodegaPorRecibir() {
       await exigirAdmin(); const r = await fx('fx_inv_pendientes', { p_sociedad: null, p_q: '', p_limite: 50 });
+      // Propuesta de la IA (fact.ia_propuestas, la mas reciente de Sonnet u Opus segun fx_ia_propuestas) solo para facturas con lineas sin equivalencia
+      const sinEq = (l) => !(l.sugerencia && (l.sugerencia.articulo_id || l.sugerencia.articulo?.id));
+      const propuestas = new Map();
+      await Promise.all(r.facturas.filter((f) => f.puede_recibir !== false && (f.lineas || []).some(sinEq)).map(async (f) => {
+        try { const ps = await fx('fx_ia_propuestas', { p_clave: f.clave }); for (const p of (Array.isArray(ps) ? ps : [])) if (p.articulo_id) propuestas.set(`${f.clave}|${p.linea}`, p); } catch { /* sin propuesta: se asigna a mano */ }
+      }));
       return r.facturas.filter((f) => f.puede_recibir !== false).map((f) => ({ clave: f.clave, proveedor: f.proveedor_nombre, fecha: f.fecha, empresa: f.sociedad_nombre, total: num(f.total),
         lineas: (f.lineas || []).map((l) => {
           const s = l.sugerencia && (l.sugerencia.articulo_id || l.sugerencia.articulo?.id) ? l.sugerencia : null;
+          const p = propuestas.get(`${f.clave}|${l.linea}`);
           return { linea: l.linea, descripcion: l.descripcion, cantidad: num(l.cantidad), unidad: l.unidad,
+            propuesta: !s && p ? { articuloId: p.articulo_id, articulo: p.articulo || 'Artículo', factor: num(p.factor) || 1, unidad: p.articulo_unidad || p.unidad || '', nivel: p.nivel || null, razon: p.razon || '', modelo: p.modelo || '' } : null,
             sugerencia: s ? { articuloId: s.articulo_id || s.articulo.id, articulo: s.articulo_nombre || (typeof s.articulo === 'string' ? s.articulo : s.articulo?.nombre) || 'Artículo', factor: num(s.factor) || 1, unidad: s.unidad_articulo || s.unidad || '' } : null };
         }) }));
     },
     async bodegaRecibir({ lineas }) {
       await exigirAdmin(); if (!lineas?.length) throw new Error('No hay líneas para recibir.');
-      const r = await fx('fx_inv_recibir', { p_lineas: lineas.map((l) => ({ clave: l.clave, linea: l.linea, articulo_id: l.articuloId, ...(l.factor ? { factor: l.factor } : {}) })), p_idem: idem() });
+      const r = await fx('fx_inv_recibir', { p_lineas: lineas.map((l) => ({ clave: l.clave, linea: l.linea, articulo_id: l.articuloId, ...(l.factor ? { factor: l.factor } : {}), ...(l.venceEn ? { vence_en: l.venceEn } : {}) })), p_idem: idem() });
       return { recibidas: lineas.length, detalle: r };
     },
     async bodegaSalida({ tipo, ubicacion, items, motivo }) {
@@ -310,6 +319,52 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
       const r = await fx('fx_inv_movimientos', { p_desde: d, p_hasta: h, p_articulo: null, p_ubicacion: ubicacion, p_tipo: null, p_limite: limite });
       return (Array.isArray(r) ? r : r.movimientos || r.filas || []).slice(0, limite).map((m) => ({ id: m.id, tipo: m.tipo, tipoNombre: m.tipo_nombre, articulo: m.articulo, unidad: m.unidad, cantidad: num(m.cantidad),
         ubicacion: m.ubicacion, motivo: m.motivo, usuario: m.usuario_nombre || m.usuario, fecha: m.fecha, hora: horaCR(m.creado_en), signo: Math.sign(num(m.valor) || 0) || 0 }));
+    },
+    async bodegaArticulos({ q = '' } = {}) {
+      await exigirAdmin(); const r = await fx('fx_inv_articulos', { p_q: q || '', p_categoria: null, p_incluir_inactivos: false });
+      return (r.articulos || []).map((a) => ({ id: a.id, nombre: a.nombre, categoria: a.categoria || '', unidad: a.unidad, existencia: num(a.existencia) || 0,
+        minimos: Object.fromEntries((a.minimos || []).map((m) => [m.ubicacion_id, num(m.minimo)])) }));
+    },
+    async bodegaFijarMinimos({ items }) {
+      await exigirAdmin(); if (!items?.length) throw new Error('No hay mínimos que guardar.');
+      const porArt = new Map();
+      for (const i of items) {
+        const m = Number(i.minimo); if (!Number.isFinite(m) || m < 0) throw new Error('El mínimo debe ser un número, 0 o más.');
+        if (!porArt.has(i.articuloId)) porArt.set(i.articuloId, []); porArt.get(i.articuloId).push({ ubicacion_id: i.ubicacionId, minimo: String(m) });
+      }
+      for (const [id, minimos] of porArt) await fx('fx_inv_articulo_guardar', { p: { id, minimos }, p_idem: idem() });
+      return { guardados: items.length };
+    },
+    async bodegaSugerenciaMinimos() {
+      const ub = (await this.bodegaUbicaciones()).find((u) => u.tipo === 'local' && /soda/i.test(u.nombre));
+      return { nota: SUGERENCIA_MINIMOS.nota, items: ub ? SUGERENCIA_MINIMOS.items.map((i) => ({ ...i, unidad: 'unidad', ubicacionId: ub.id, ubicacion: ub.nombre })) : [] };
+    },
+    async bodegaLotes({ articulo = null, ubicacion = null } = {}) {
+      await exigirAdmin(); const r = await fx('fx_inv_lotes', { p_articulo: articulo, p_ubicacion: ubicacion, p_incluir_agotados: false, p_limite: 200 });
+      return (Array.isArray(r) ? r : r.lotes || r.filas || []).map((l) => ({ id: l.id, articuloId: l.articulo_id, articulo: l.articulo, unidad: l.unidad, ubicacion: l.ubicacion, cantidad: num(l.cantidad_actual),
+        inicial: num(l.cantidad_inicial), venceEn: l.vence_en || null, dias: l.dias_para_vencer ?? null, vencido: !!l.vencido, entrada: l.fecha_entrada, origen: l.origen }));
+    },
+    async bodegaRecibidas({ limite = 15 } = {}) {
+      await exigirAdmin(); const r = await fx('fx_inv_lotes', { p_articulo: null, p_ubicacion: null, p_incluir_agotados: false, p_limite: 200 });
+      return (Array.isArray(r) ? r : r.lotes || r.filas || []).filter((l) => l.factura_clave && l.estado !== 'anulado').slice(0, limite).map((l) => ({
+        clave: l.factura_clave, linea: l.factura_linea, proveedor: l.proveedor_cedula || '', descripcion: '', articulo: l.articulo, unidad: l.unidad, cantidad: num(l.cantidad_inicial), ubicacion: l.ubicacion,
+        fecha: l.fecha_entrada, deshacible: num(l.cantidad_actual) === num(l.cantidad_inicial) && !l.lote_padre_id }));
+    },
+    async bodegaDeshacerRecepcion({ clave, linea, motivo }) {
+      await exigirAdmin(); if (String(motivo || '').trim().length < 3) throw new Error('Escriba el motivo (al menos 3 letras).');
+      await fx('fx_inv_recepcion_deshacer', { p_clave: clave, p_linea: Number(linea), p_motivo: motivo.trim(), p_idem: idem() }); return { clave, linea };
+    },
+    async bodegaNotas({ estado = 'por_revisar' } = {}) {
+      await exigirAdmin(); const r = await fx('fx_inv_notas_proveedor', { p_estado: estado, p_limite: 50 });
+      return (r.notas || []).map((n) => ({ clave: n.clave, tipo: n.tipo, proveedor: n.proveedor_nombre, fecha: n.fecha, empresa: n.sociedad_nombre, total: num(n.total), estado: n.estado,
+        lineas: (n.lineas || []).map((l) => ({ linea: l.linea, descripcion: l.descripcion, cantidad: num(l.cantidad), unidad: l.unidad, articuloId: l.articulo_id || null, articulo: l.articulo || null, factor: num(l.factor) || 1 })) }));
+    },
+    async bodegaNotaDevolver({ clave, ubicacion, items, motivo }) {
+      await exigirAdmin(); if (!items?.length) throw new Error('Indique qué artículos se devuelven.');
+      await fx('fx_inv_nota_devolver', { p_clave_nota: clave, p_ubicacion: ubicacion, p_items: items.map(itemFx), p_motivo: motivo || null, p_idem: idem() }); return { items: items.length };
+    },
+    async bodegaNotaIgnorar({ clave, motivo }) {
+      await exigirAdmin(); await fx('fx_inv_nota_ignorar', { p_clave_nota: clave, p_motivo: motivo || 'No afecta el inventario', p_idem: idem() });
     },
     async restablecerPrueba() { throw new Error('Solo existe en el modo de prueba.'); },
   };

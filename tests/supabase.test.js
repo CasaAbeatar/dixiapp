@@ -189,6 +189,10 @@ test('bodega: usa las funciones del facturador (public.fx_inv_*) y solo para adm
       case 'fx_inv_conteo_registrar':
       case 'fx_inv_conteo': return { data: { conteo: { id: 'c1', ubicacion_id: 'u1', ubicacion: 'Bodega central', estado: 'abierto', lineas: 2, contadas: 1 }, lineas: [{ articulo_id: 'a1', articulo: 'Pollo', categoria: 'Carnes', unidad: 'unidad', contado: '4', diferencia: '-2' }] }, error: null };
       case 'fx_inv_conteo_confirmar': return { data: { ajustes: [{ articulo: 'Pollo', unidad: 'unidad', esperado: 6, contado: 4, diferencia: -2 }], sin_cambio: 1, no_contados: [] }, error: null };
+      case 'fx_ia_propuestas': return { data: [{ linea: 2, nivel: 'verde', articulo_id: 'a9', articulo: 'Raro entero', articulo_unidad: 'unidad', factor: '12', razon: 'El 12 es el empaque', modelo: 'claude-sonnet-5-5' }], error: null };
+      case 'fx_inv_articulos': return { data: { n: 1, articulos: [{ id: 'a1', nombre: 'Pollo', categoria: 'Carnes', unidad: 'unidad', existencia: '12.5', minimos: [{ ubicacion_id: 'u1', minimo: '20' }] }] }, error: null };
+      case 'fx_inv_lotes': return { data: { lotes: [{ id: 'l1', articulo_id: 'a1', articulo: 'Pollo', unidad: 'unidad', ubicacion: 'Bodega central', cantidad_inicial: '10', cantidad_actual: '10', vence_en: '2026-11-05', dias_para_vencer: 3, vencido: false, fecha_entrada: '2026-11-01', origen: 'factura', estado: 'activo', factura_clave: 'K', factura_linea: 1, lote_padre_id: null }] }, error: null };
+      case 'fx_inv_notas_proveedor': return { data: { notas: [{ clave: 'N1', tipo: 'NotaCreditoElectronica', proveedor_nombre: 'Avícola', fecha: '2026-11-02', sociedad_nombre: 'Pollos', total: '500', estado: 'por_revisar', lineas: [{ linea: 1, descripcion: 'Pollo', cantidad: '2', unidad: 'unidad', articulo_id: 'a1', articulo: 'Pollo', factor: '1' }] }] }, error: null };
       case 'fx_inv_ajustar': return { data: { ajustes: [{ articulo: 'Pollo', antes: 6, despues: 5, diferencia: -1 }] }, error: null };
       default: return { data: {}, error: null };
     }
@@ -212,6 +216,26 @@ test('bodega: usa las funciones del facturador (public.fx_inv_*) y solo para adm
   assert.equal((await d.bodegaConteoConfirmar('c1')).ajustes[0].diferencia, -2);
   await d.bodegaAjustar({ ubicacion: 'u1', items: [{ articuloId: 'a1', cantidadReal: 5 }], motivo: 'Recuento' });
   assert.equal(vistos.find((v) => v.rpc === 'fx_inv_ajustar').args.p_items[0].cantidad_real, '5');
+  // Asignar con propuesta de la IA: solo se pide la propuesta de facturas con lineas sin equivalencia, y se lee la de la funcion (la mas reciente de Sonnet u Opus)
+  assert.equal(pend[0].lineas[1].propuesta.articuloId, 'a9'); assert.equal(pend[0].lineas[1].propuesta.factor, 12); assert.equal(pend[0].lineas[0].propuesta, null);
+  assert.deepEqual(vistos.find((v) => v.rpc === 'fx_ia_propuestas').args, { p_clave: 'K' });
+  await d.bodegaRecibir({ lineas: [{ clave: 'K', linea: 2, articuloId: 'a9', factor: 12, venceEn: '2026-12-01' }] });
+  assert.deepEqual(vistos.filter((v) => v.rpc === 'fx_inv_recibir').at(-1).args.p_lineas, [{ clave: 'K', linea: 2, articulo_id: 'a9', factor: 12, vence_en: '2026-12-01' }]);
+  // Minimos: se guardan con fx_inv_articulo_guardar (un llamado por articulo) y se leen de fx_inv_articulos
+  const art = await d.bodegaArticulos({}); assert.deepEqual(art[0].minimos, { u1: 20 });
+  await d.bodegaFijarMinimos({ items: [{ articuloId: 'a1', ubicacionId: 'u1', minimo: 30 }, { articuloId: 'a1', ubicacionId: 'u2', minimo: 0 }] });
+  assert.deepEqual(vistos.find((v) => v.rpc === 'fx_inv_articulo_guardar').args.p, { id: 'a1', minimos: [{ ubicacion_id: 'u1', minimo: '30' }, { ubicacion_id: 'u2', minimo: '0' }] });
+  assert.equal((await d.bodegaSugerenciaMinimos()).items.length, 0); // no hay Local Soda en el catalogo falso: no inventa ubicacion
+  // Lotes, deshacer recepcion y notas de credito
+  const lotes = await d.bodegaLotes({ articulo: 'a1' }); assert.equal(lotes[0].venceEn, '2026-11-05'); assert.equal(lotes[0].dias, 3);
+  const recs = await d.bodegaRecibidas({}); assert.equal(recs[0].deshacible, true); assert.equal(recs[0].clave, 'K');
+  await assert.rejects(() => d.bodegaDeshacerRecepcion({ clave: 'K', linea: 1, motivo: '' }), /motivo/);
+  await d.bodegaDeshacerRecepcion({ clave: 'K', linea: 1, motivo: 'Por error' });
+  assert.deepEqual(vistos.find((v) => v.rpc === 'fx_inv_recepcion_deshacer').args, { p_clave: 'K', p_linea: 1, p_motivo: 'Por error', p_idem: vistos.find((v) => v.rpc === 'fx_inv_recepcion_deshacer').args.p_idem });
+  const notas = await d.bodegaNotas({}); assert.equal(notas[0].lineas[0].articuloId, 'a1');
+  await d.bodegaNotaDevolver({ clave: 'N1', ubicacion: 'u1', items: [{ articuloId: 'a1', cantidad: 2 }], motivo: 'Nota de crédito' });
+  const dev = vistos.find((v) => v.rpc === 'fx_inv_nota_devolver').args; assert.equal(dev.p_clave_nota, 'N1'); assert.deepEqual(dev.p_items, [{ articulo_id: 'a1', cantidad: '2' }]);
+  await d.bodegaNotaIgnorar({ clave: 'N1' }); assert.equal(vistos.find((v) => v.rpc === 'fx_inv_nota_ignorar').args.p_clave_nota, 'N1');
   // el cliente nunca manda usuario, fecha ni costos: lo decide el servidor
   for (const v of vistos) assert.equal(JSON.stringify(v.args).includes('p_usuario'), false);
   assert.match(mensajeError({ message: 'Sin acceso al facturador' }), /inventario del facturador/);
