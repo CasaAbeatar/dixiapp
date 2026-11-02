@@ -1,54 +1,138 @@
 import { datos } from './datos/index.js';
-import { MOTIVOS_SALIDA } from './datos/interfaz.js';
 import { leerMonto, aplicarTema } from './ui.js';
-import { vistaAcceso, marco, vistaHoy, vistaCierres, vistaEfectivo, vistaMas } from './vistas.js';
+import { vistaPin, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas } from './vistas.js';
+import { vistaCompras } from './vistas-compras.js';
 import { colones } from './datos/formato.js';
 import { estadoDiferencia, diferencia } from './datos/calculos.js';
+import { construirBodega, accionBodega, entradaBodega, despuesDePintar, estadoBodega } from './bodega.js';
+import { rangoPorDefecto, rellenarPeriodos } from './datos/compras-calc.js';
 
 const raiz = document.getElementById('app');
 const leerLS = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
 const escribirLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
+const miles = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-const s = { usuario: null, negocios: [], negocioId: null, pestana: 'Hoy', pin: '', errorPin: '', form: null, aviso: '', limite: 7, errorCierre: '', tema: leerLS('dixiapp.tema', 'auto') };
+const s = {
+  acceso: 'sin_sesion', usuario: null, negocios: [], negocioId: null, pestana: 'Caja', tema: leerLS('dixiapp.tema', 'auto'),
+  pin: '', pin1: '', faseCrear: 'nuevo', errorPin: '', correo: '', errorCorreo: '', cargando: false,
+  fecha: null, form: null, aviso: '', error: '', fondo: '', cierre: null, corrigiendo: null, limite: 7,
+  filtro: { neg: 'ambos', proveedor: '' }, bodega: estadoBodega(), por: 'dia', abierta: null, vivo: false, ultimo: Date.now(), esperado: 0,
+};
 aplicarTema(s.tema);
 
-const esGerente = () => s.usuario?.rol === 'gerente';
-const pestanasDe = () => (esGerente() ? ['Hoy', 'Cierres', 'Efectivo', 'Más'] : ['Hoy', 'Efectivo', 'Más']);
+const esAdmin = () => s.usuario?.rol === 'administrador';
+const pestanasDe = () => (esAdmin() ? ['Caja', 'Compras', 'Bodega', 'Cierres', 'Más'] : ['Caja', 'Más']);
+let pintando = 0;
 
 async function pintar() {
-  if (!s.usuario) { raiz.innerHTML = vistaAcceso({ pin: s.pin, error: s.errorPin }); return; }
+  const yo = ++pintando;
+  try {
+    const html = await construir();
+    if (yo !== pintando) return; // llego una pintura mas nueva
+    raiz.innerHTML = html;
+    if (s.usuario && s.pestana === 'Caja') actualizarDif();
+    if (s.usuario && s.pestana === 'Bodega') despuesDePintar(raiz, s.bodega);
+  } catch (e) {
+    if (yo !== pintando) return;
+    if (/No autorizado|sesión venció/i.test(e.message) && s.usuario) { s.usuario = null; s.acceso = await datos.estadoAcceso(); s.errorPin = 'Vuelva a entrar.'; return pintar(); }
+    s.error = e.message; raiz.innerHTML = `<div class="acceso"><div class="acceso-caja"><p class="error" role="alert">${e.message}</p><button class="btn bloque" data-accion="reintentar">Reintentar</button></div></div>`;
+  }
+}
+
+async function construir() {
+  if (!s.usuario) return vistaAccesoActual();
   const hoy = await datos.hoy();
-  const negocio = s.negocios.find((n) => n.id === s.negocioId);
-  const caja = await datos.cajaDeHoy(s.negocioId);
-  const movs = await datos.movimientos(s.negocioId, hoy);
-  s.esperado = caja.esperado;
-  let contenido = '';
-  if (s.pestana === 'Hoy') contenido = vistaHoy({ caja, movs, esGerente: esGerente() });
-  else if (s.pestana === 'Cierres' && esGerente()) {
-    const { items, hayMas } = await datos.cierres(s.negocioId, { limite: s.limite });
-    contenido = vistaCierres({ caja, cierres: items, hayMas, errorCierre: s.errorCierre });
-  } else if (s.pestana === 'Efectivo') {
-    const semana = esGerente() ? await datos.resumenSemana(s.negocioId) : null;
-    const personas = [...new Set([s.usuario.nombre, 'Gerente de prueba', 'Empleada de prueba', 'Otra persona'])];
-    contenido = vistaEfectivo({ caja, movs, semana, form: s.form, aviso: s.aviso, esGerente: esGerente(), personas });
-  } else contenido = vistaMas({ usuario: s.usuario, negocios: s.negocios, negocioId: s.negocioId, tema: s.tema, esGerente: esGerente() });
-  raiz.innerHTML = marco({ usuario: s.usuario, negocio: negocio, hoy, pestana: s.pestana, pestanas: pestanasDe(), contenido });
-  if (s.pestana === 'Cierres') actualizarDif();
+  if (!s.fecha) s.fecha = hoy;
+  let contenido = '', titulo = s.negocios.find((n) => n.id === s.negocioId);
+  if (s.pestana === 'Caja') {
+    const [caja, act] = await Promise.all([datos.cajaActual(s.negocioId), datos.actividad(s.negocioId, s.fecha)]);
+    s.esperado = caja?.esperado ?? 0;
+    contenido = selectorNegocio(s.negocios, s.negocioId) + vistaCaja({ hoy, fecha: s.fecha, caja, act, esAdmin: esAdmin(), form: s.form, sugerencias: s.form?.sug || [], aviso: s.aviso, error: s.error, fondo: s.fondo, corrigiendo: s.corrigiendo, cierre: s.cierre });
+  } else if (s.pestana === 'Cierres' && esAdmin()) {
+    const [{ items, hayMas }, semana] = await Promise.all([datos.cierres(s.negocioId, { limite: s.limite }), datos.resumenSemana(s.negocioId)]);
+    contenido = selectorNegocio(s.negocios, s.negocioId) + vistaCierres({ cierres: items, hayMas, semana });
+  } else if (s.pestana === 'Compras' && esAdmin()) {
+    contenido = await construirCompras(hoy); titulo = { nombre: 'Compras' };
+  } else if (s.pestana === 'Bodega' && esAdmin()) {
+    contenido = await construirBodega(datos, s.bodega); titulo = { nombre: 'Bodega' };
+  } else {
+    contenido = vistaMas({ usuario: s.usuario, tema: s.tema, horarios: await datos.horarios(), esAdmin: esAdmin(), esPrueba: datos.esPrueba, conBloqueo: !datos.esPrueba, negocios: s.negocios });
+    titulo = s.negocios.find((n) => n.id === s.negocioId);
+  }
+  s.error = '';
+  return marco({ negocio: titulo, hoy, pestana: s.pestana, pestanas: pestanasDe(), contenido, esPrueba: datos.esPrueba });
+}
+
+async function construirCompras(hoy) {
+  const negs = s.filtro.neg === 'ambos' ? null : [s.filtro.neg];
+  let proveedores = await datos.comprasProveedores({ negocios: negs });
+  if (s.filtro.proveedor && !proveedores.some((p) => p.cedula === s.filtro.proveedor)) s.filtro.proveedor = '';
+  const base = { negocios: negs, proveedor: s.filtro.proveedor || null };
+  const rango = rangoPorDefecto(hoy, s.por);
+  const [resumen, ultimas, serie, tipos, rubros, provs] = await Promise.all([
+    datos.comprasResumen(base), datos.comprasUltimas({ ...base, limite: 8 }),
+    datos.comprasAgrupadas({ ...base, ...rango, por: s.por }),
+    datos.comprasAgrupadas({ ...base, ...rango, por: 'tipo_proveedor' }), datos.comprasAgrupadas({ ...base, ...rango, por: 'rubro' }), datos.comprasAgrupadas({ ...base, ...rango, por: 'proveedor' }),
+  ]);
+  return vistaCompras({ hoy, negociosPermitidos: s.negocios, filtro: s.filtro, proveedores, resumen, ultimas, por: s.por, grafico: rellenarPeriodos(serie, s.por, rango.desde, rango.hasta), rango, tipos, rubros, provs, abierta: s.abierta, vivo: s.vivo, error: s.error });
+}
+
+function vistaAccesoActual() {
+  const nota = datos.esPrueba ? '<b>Modo de prueba, datos ficticios.</b><br>PIN del administrador: 1234. PIN del cajero: 4321.' : '';
+  if (datos.acceso === 'pin') return vistaPin({ titulo: 'Dixiapp', ayuda: 'Escriba su PIN de 4 a 6 dígitos', pin: s.pin, error: s.errorPin, nota });
+  if (s.acceso === 'sin_sesion') return vistaCorreo({ correo: s.correo, error: s.errorCorreo, cargando: s.cargando });
+  const enlace = '<button class="enlace" style="margin-top:6px" data-accion="otra-cuenta">Entrar con otro correo</button>';
+  if (s.acceso === 'crear_pin') {
+    return vistaPin({ titulo: s.faseCrear === 'nuevo' ? 'Cree su PIN' : 'Repita su PIN', ayuda: s.faseCrear === 'nuevo' ? 'De 4 a 6 dígitos. Solo sirve en este aparato.' : 'Escríbalo otra vez para confirmar', pin: s.pin, error: s.errorPin, textoEntrar: s.faseCrear === 'nuevo' ? 'Siguiente' : 'Guardar', enlace });
+  }
+  return vistaPin({ titulo: 'Dixiapp bloqueada', ayuda: 'Escriba su PIN para continuar', pin: s.pin, error: s.errorPin, enlace });
 }
 
 async function entrarConUsuario(u) {
   s.usuario = u; s.negocios = await datos.negocios();
   const guardado = leerLS('dixiapp.negocio', '');
   s.negocioId = s.negocios.some((n) => n.id === guardado) ? guardado : s.negocios[0].id;
-  s.pestana = 'Hoy'; s.pin = ''; s.errorPin = '';
+  s.bodega = estadoBodega(); s.pestana = 'Caja'; s.fecha = null; s.pin = ''; s.pin1 = ''; s.errorPin = ''; s.form = null; s.cierre = null; s.aviso = ''; s.error = '';
+  suscribirCompras();
 }
 
-async function intentarEntrar() {
+let cancelarSuscripcion = null, temporizador = null;
+async function suscribirCompras() {
+  if (cancelarSuscripcion) { cancelarSuscripcion(); cancelarSuscripcion = null; }
+  if (!esAdmin()) return;
   try {
-    const u = await datos.iniciarSesion(s.pin);
-    if (!u) { s.errorPin = 'PIN incorrecto. Intente de nuevo.'; s.pin = ''; return pintar(); }
-    await entrarConUsuario(u);
-  } catch (e) { s.errorPin = e.message; s.pin = ''; }
+    cancelarSuscripcion = await datos.comprasSuscribir(() => {
+      clearTimeout(temporizador);
+      temporizador = setTimeout(async () => {
+        s.vivo = true;
+        if (s.usuario && s.pestana === 'Compras') await pintar();
+        setTimeout(() => { s.vivo = false; const el = document.querySelector('[data-id="vivo"]'); if (el) { el.classList.remove('on'); el.lastChild.textContent = 'En vivo'; } }, 4000);
+      }, 300);
+    });
+  } catch { /* sin tiempo real: la vista sigue funcionando al abrirla */ }
+}
+
+async function evaluarAcceso() {
+  s.acceso = await datos.estadoAcceso();
+  if (s.acceso === 'abierta') { const u = await datos.sesionActual(); if (u) await entrarConUsuario(u); }
+  else { s.usuario = null; s.pin = ''; s.pin1 = ''; s.faseCrear = 'nuevo'; }
+}
+
+async function intentarPin() {
+  s.errorPin = '';
+  try {
+    if (datos.acceso === 'pin') {
+      const u = await datos.iniciarSesion({ pin: s.pin });
+      if (!u) { s.errorPin = 'PIN incorrecto. Intente de nuevo.'; s.pin = ''; } else await entrarConUsuario(u);
+    } else if (s.acceso === 'crear_pin') {
+      if (s.faseCrear === 'nuevo') { s.pin1 = s.pin; s.pin = ''; s.faseCrear = 'confirmar'; }
+      else if (s.pin !== s.pin1) { s.errorPin = 'Los PIN no coinciden. Empiece de nuevo.'; s.pin = ''; s.pin1 = ''; s.faseCrear = 'nuevo'; }
+      else { await datos.configurarPinLocal(s.pin); await evaluarAcceso(); }
+    } else {
+      const u = await datos.desbloquear(s.pin);
+      if (!u) { s.errorPin = 'PIN incorrecto. Intente de nuevo.'; s.pin = ''; } else await evaluarAcceso();
+    }
+  } catch (e) { s.errorPin = e.message; s.pin = ''; await evaluarAcceso().catch(() => {}); }
   pintar();
 }
 
@@ -62,78 +146,120 @@ function actualizarDif() {
   salida.className = 'num ' + (d < 0 ? 'mal' : 'ok');
 }
 
+const sumarDiasTexto = (t, n) => { const d = new Date(`${t}T12:00:00`); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
+
 raiz.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-accion]'); if (!el) return;
   const a = el.dataset.accion, v = el.dataset.valor;
+  if (s.usuario && s.pestana === 'Bodega' && await accionBodega(a, v, { datos, b: s.bodega, raiz, repintar: pintar })) return;
   try {
     if (a === 'digito') { if (s.pin.length < 6) s.pin += v; s.errorPin = ''; return pintar(); }
     if (a === 'borrar') { s.pin = s.pin.slice(0, -1); return pintar(); }
-    if (a === 'entrar') return intentarEntrar();
-    if (a === 'pestana') { s.pestana = v; s.aviso = ''; s.errorCierre = ''; await pintar(); return void window.scrollTo(0, 0); }
-    if (a === 'salir') { await datos.cerrarSesion(); Object.assign(s, { usuario: null, form: null, aviso: '', pin: '' }); return pintar(); }
-    if (a === 'negocio') { s.negocioId = v; escribirLS('dixiapp.negocio', v); s.form = null; s.limite = 7; return pintar(); }
+    if (a === 'entrar') return intentarPin();
+    if (a === 'otra-cuenta') { await datos.cerrarSesion(); await evaluarAcceso(); return pintar(); }
+    if (a === 'reintentar') { s.error = ''; return pintar(); }
+    if (a === 'pestana') { s.pestana = v; s.aviso = ''; s.error = ''; s.cierre = null; s.corrigiendo = null; await pintar(); return void window.scrollTo(0, 0); }
+    if (a === 'salir') { await datos.cerrarSesion(); Object.assign(s, { usuario: null, form: null, aviso: '', pin: '' }); if (cancelarSuscripcion) { cancelarSuscripcion(); cancelarSuscripcion = null; } await evaluarAcceso(); return pintar(); }
+    if (a === 'bloquear') { await datos.bloquear(); await evaluarAcceso(); return pintar(); }
+    if (a === 'negocio') { s.negocioId = v; escribirLS('dixiapp.negocio', v); Object.assign(s, { form: null, limite: 7, fecha: null, aviso: '', cierre: null, corrigiendo: null }); return pintar(); }
     if (a === 'tema') { s.tema = v; escribirLS('dixiapp.tema', v); aplicarTema(v); return pintar(); }
     if (a === 'restablecer') { await datos.restablecerPrueba(); s.aviso = ''; return pintar(); }
     if (a === 'mas-cierres') { s.limite += 7; return pintar(); }
-    if (a === 'abrir-form') {
-      s.aviso = '';
-      s.form = { tipo: v, monto: '', motivo: '', otro: '', quien: s.usuario.nombre, nota: '', error: '' };
-      await pintar(); return void document.getElementById('formulario')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
+    // Caja
+    if (a === 'dia-menos' || a === 'dia-mas') { s.fecha = sumarDiasTexto(s.fecha, a === 'dia-mas' ? 1 : -1); s.aviso = ''; return pintar(); }
+    if (a === 'dia-hoy') { s.fecha = null; return pintar(); }
+    if (a === 'abrir-caja') return abrirCaja();
+    if (a === 'abrir-form') { s.aviso = ''; s.form = { tipo: v, monto: '', motivo: '', nota: '', error: '', sug: await datos.sugerenciasMotivos(v) }; await pintar(); return void document.getElementById('formulario')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
     if (a === 'cancelar-form') { s.form = null; return pintar(); }
-    if (a === 'motivo') { s.form.motivo = v; s.form.error = ''; await pintar(); return void document.getElementById(v === 'Otro' ? 'f-otro' : 'f-monto')?.focus(); }
+    if (a === 'motivo') { s.form.motivo = v; s.form.error = ''; await pintar(); return void document.getElementById('f-monto')?.focus(); }
     if (a === 'guardar-mov') return guardarMovimiento();
-    if (a === 'cerrar-caja') return cerrar();
-  } catch (e) { alert(e.message); }
+    if (a === 'corregir') { s.corrigiendo = v; return pintar(); }
+    if (a === 'cancelar-corr') { s.corrigiendo = null; return pintar(); }
+    if (a === 'confirmar-corr') { await datos.corregirMovimiento(v, {}); s.corrigiendo = null; s.aviso = 'Corrección registrada. El movimiento original queda a la vista.'; return pintar(); }
+    if (a === 'cerrar-caja') return cerrar(v === 'confirmar');
+    if (a === 'cancelar-cierre') { s.cierre = null; return pintar(); }
+    // Compras
+    if (a === 'filtro-negocio') { s.filtro.neg = v; s.abierta = null; return pintar(); }
+    if (a === 'por') { s.por = v; return pintar(); }
+    if (a === 'factura') { s.abierta = s.abierta === v ? null : v; return pintar(); }
+  } catch (e) { s.error = e.message; s.corrigiendo = null; pintar(); }
 });
 
 raiz.addEventListener('input', (ev) => {
   const id = ev.target.id;
-  if (['f-monto', 'c-contado', 'c-tarjeta', 'c-sinpe'].includes(id)) {
+  if (s.usuario && s.pestana === 'Bodega' && entradaBodega(ev, raiz, s.bodega)) return;
+  if (['f-monto', 'c-contado', 'a-fondo'].includes(id)) {
     const n = leerMonto(ev.target.value);
-    ev.target.value = n === null ? '' : String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    ev.target.value = n === null ? '' : miles(n);
     if (id === 'f-monto') s.form.monto = ev.target.value;
+    if (id === 'a-fondo') s.fondo = ev.target.value;
     if (id === 'c-contado') actualizarDif();
   }
-  if (id === 'f-otro') s.form.otro = ev.target.value;
+  if (id === 'f-motivo') s.form.motivo = ev.target.value;
   if (id === 'f-nota') s.form.nota = ev.target.value;
+  if (id === 'a-correo') s.correo = ev.target.value;
 });
-raiz.addEventListener('change', (ev) => { if (ev.target.id === 'f-quien') s.form.quien = ev.target.value; });
+raiz.addEventListener('change', (ev) => { if (ev.target.id === 'f-proveedor') { s.filtro.proveedor = ev.target.value; s.abierta = null; pintar(); } });
+raiz.addEventListener('submit', async (ev) => {
+  if (ev.target.dataset.form !== 'correo') return;
+  ev.preventDefault();
+  s.correo = document.getElementById('a-correo').value; const clave = document.getElementById('a-clave').value;
+  s.cargando = true; s.errorCorreo = ''; await pintar();
+  try { await datos.iniciarSesion({ correo: s.correo, clave }); await evaluarAcceso(); } catch (e) { s.errorCorreo = e.message; }
+  s.cargando = false; pintar();
+});
 document.addEventListener('keydown', (ev) => {
-  if (s.usuario) return;
+  s.ultimo = Date.now();
+  if (s.usuario || (datos.acceso === 'correo' && s.acceso === 'sin_sesion')) return;
   if (/^\d$/.test(ev.key) && s.pin.length < 6) { s.pin += ev.key; s.errorPin = ''; pintar(); }
   else if (ev.key === 'Backspace') { s.pin = s.pin.slice(0, -1); pintar(); }
-  else if (ev.key === 'Enter' && s.pin.length >= 4) intentarEntrar();
+  else if (ev.key === 'Enter' && s.pin.length >= 4) intentarPin();
 });
+for (const t of ['click', 'touchstart']) document.addEventListener(t, () => { s.ultimo = Date.now(); }, { passive: true });
+// Bloqueo por inactividad (solo con acceso real): pide el PIN otra vez tras 5 minutos sin tocar la pantalla
+setInterval(async () => {
+  if (datos.esPrueba || !s.usuario || Date.now() - s.ultimo < 5 * 60 * 1000) return;
+  await datos.bloquear(); await evaluarAcceso(); pintar();
+}, 15000);
+
+async function abrirCaja() {
+  const fondo = leerMonto(s.fondo) ?? 0;
+  try { await datos.abrirCaja(s.negocioId, { fondoInicial: fondo }); s.aviso = `Caja abierta con un fondo de ${colones(fondo)}.`; s.fondo = ''; s.error = ''; }
+  catch (e) { s.error = e.message; }
+  pintar();
+}
 
 async function guardarMovimiento() {
-  const f = s.form; const monto = leerMonto(f.monto);
-  const motivo = f.motivo === 'Otro' ? f.otro.trim() : f.motivo;
+  const f = s.form; f.error = ''; const monto = leerMonto(f.monto); const motivo = f.motivo.trim();
   if (!monto) f.error = 'Escriba el monto en colones.';
-  else if (!f.motivo) f.error = 'Elija un motivo de la lista.';
-  else if (!motivo) f.error = 'Escriba cuál es el otro motivo.';
+  else if (!motivo) f.error = 'Escriba el motivo o toque una sugerencia.';
   if (f.error) { await pintar(); return; }
   try {
-    await datos.registrarMovimiento({ negocioId: s.negocioId, tipo: f.tipo, monto, motivo, nota: f.nota, registradoPor: f.quien });
-    s.aviso = `${f.tipo === 'salida' ? 'Salida' : 'Entrada'} de ${colones(monto)} guardada. El efectivo esperado ya se actualizó.`;
+    await datos.registrarMovimiento({ negocioId: s.negocioId, tipo: f.tipo, monto, motivo, nota: f.nota });
+    s.aviso = `${f.tipo === 'salida' ? 'Salida' : 'Entrada'} de ${colones(monto)} guardada.`;
     s.form = null;
   } catch (e) { f.error = e.message; }
   await pintar();
 }
 
-async function cerrar() {
-  const contado = leerMonto(document.getElementById('c-contado').value);
-  const tarjeta = leerMonto(document.getElementById('c-tarjeta').value) ?? 0;
-  const sinpe = leerMonto(document.getElementById('c-sinpe').value) ?? 0;
-  if (contado === null) { s.errorCierre = 'Escriba el efectivo contado en caja antes de cerrar.'; return pintar(); }
-  try { await datos.cerrarCaja(s.negocioId, { contado, tarjeta, sinpe }); s.errorCierre = ''; } catch (e) { s.errorCierre = e.message; }
+async function cerrar(confirmar) {
+  const inp = document.getElementById('c-contado');
+  const contado = leerMonto(inp.value);
+  if (contado === null) { s.error = 'Escriba el efectivo contado en caja antes de cerrar.'; return pintar(); }
+  try {
+    const r = await datos.cerrarCaja(s.negocioId, { contado, confirmarFaltante: confirmar });
+    s.error = '';
+    if (r.requiereConfirmacion) { s.cierre = { faltante: r.faltante, contado: miles(contado) }; return pintar(); }
+    s.cierre = null;
+    s.aviso = r.diferencia === undefined ? 'Caja cerrada. Quedó guardado quién la cerró.' : `Caja cerrada. ${r.diferencia === 0 ? 'Cuadra.' : r.diferencia < 0 ? `Faltan ${colones(-r.diferencia)}.` : `Sobran ${colones(r.diferencia)}.`}`;
+  } catch (e) { s.error = e.message; }
   pintar();
 }
 
 async function iniciar() {
-  const u = await datos.sesionActual();
-  if (u) await entrarConUsuario(u);
+  try { await evaluarAcceso(); } catch (e) { s.errorPin = e.message; }
   await pintar();
 }
 iniciar();
+if (datos.esPrueba) window.dixiPrueba = datos; // solo para pruebas automaticas en modo de prueba
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});

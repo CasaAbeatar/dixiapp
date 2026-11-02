@@ -1,13 +1,317 @@
-// Implementacion VACIA lista para Supabase. No se conecta a nada.
-// Para activarla: completar cada metodo con supabase-js (ver docs/esquema-supabase.sql y el README)
-// y cambiar la importacion en index.js.
-import { METODOS, validarImplementacion } from './interfaz.js';
+// Implementacion de datos sobre Supabase (esquema `dixi`). Cumple el contrato de interfaz.js.
+// La llave que usa el cliente es la PUBLICABLE: nunca hay secretos aqui. La seguridad la da el RLS de la base.
+// Acceso: correo + contrasena (Supabase Auth) y, ademas, un PIN local por aparato para desbloquear sin escribir la clave.
+// El PIN solo guarda un hash PBKDF2 con sal en este aparato y solo sirve mientras haya una sesion valida.
+import { validarImplementacion } from './interfaz.js';
+import { horaLegible, lunesDe, sumarDias } from './fechas.js';
+import { resumenDesdeDias, desdeResumen } from './compras-calc.js';
 
-export function crearDatosSupabase(/* { url, claveAnonima } */) {
-  const pendiente = (nombre) => async () => {
-    throw new Error(`Supabase aun no esta conectado (${nombre}). Ver README, seccion "Conectar Supabase".`);
+const ZONA = 'America/Costa_Rica';
+const ITERACIONES = 150000;
+const MAX_FALLOS_PIN = 5;
+const num = (x) => (x === null || x === undefined ? null : Number(x));
+
+export function mensajeError(e) {
+  if (!e) return 'Ocurrió un error inesperado.';
+  const m = String(e.message || e);
+  if (e.code === '42501' || /permission denied|row-level security|No autorizado/i.test(m)) return 'No tiene permiso para hacer esto.';
+  if (e.code === '23505') return /corrige_a|correccion/i.test(`${e.message} ${e.details || ''}`) ? 'Ese movimiento ya fue corregido.' : 'Ya hay una caja abierta en este negocio.';
+  if (/Invalid login credentials/i.test(m)) return 'Correo o contraseña incorrectos.';
+  if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(m)) return 'Sin conexión con el servidor. Revise el internet e intente de nuevo.';
+  if (/Sin acceso al facturador|Solo un administrador puede/i.test(m)) return 'Su cuenta no tiene acceso al inventario del facturador. Pida que la agreguen como administradora del facturador.';
+  if (e.code === 'PT401' || /JWT expired|invalid.*token/i.test(m)) return 'La sesión venció. Entre de nuevo con su correo.';
+  return m;
+}
+const fallo = (e) => { const x = new Error(mensajeError(e)); x.codigo = e?.code; return x; };
+
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const deB64 = (t) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
+async function hashPin(pin, sal, cripto) {
+  const clave = await cripto.subtle.importKey('raw', new TextEncoder().encode(String(pin)), 'PBKDF2', false, ['deriveBits']);
+  return cripto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: sal, iterations: ITERACIONES }, clave, 256);
+}
+const iguales = (a, b) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
+
+function almacenPorDefecto() {
+  try { if (typeof localStorage !== 'undefined') return localStorage; } catch { /* sin almacenamiento */ }
+  const m = new Map(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+}
+
+export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), ahora = () => new Date(), cripto = globalThis.crypto } = {}) {
+  if (!cliente) throw new Error('Falta el cliente de Supabase');
+  const db = () => cliente.schema('dixi');
+  const ok = ({ data, error }) => { if (error) throw fallo(error); return data; };
+  const fechaCR = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: ZONA });
+  const horaCR = (iso) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { timeZone: ZONA, hour: '2-digit', minute: '2-digit' }) : null);
+  const hoy = () => fechaCR(ahora());
+  let desbloqueado = false, usuarioCache = null;
+
+  const sesion = async () => { const { data } = await cliente.auth.getSession(); return data?.session || null; };
+  const claveLS = (uid) => `dixiapp.pin.${uid}`;
+  const leerPin = (uid) => { try { return JSON.parse(almacen.getItem(claveLS(uid)) || 'null'); } catch { return null; } };
+
+  async function cargarUsuario(uid) {
+    if (usuarioCache?.id === uid) return usuarioCache;
+    const p = ok(await db().from('perfiles').select('id,nombre,rol,activo').eq('id', uid).maybeSingle());
+    if (!p || !p.activo) return null;
+    const ns = ok(await db().from('perfil_negocios').select('negocio_id').eq('perfil_id', uid));
+    usuarioCache = { id: p.id, nombre: p.nombre, rol: p.rol, negocios: ns.map((n) => n.negocio_id) };
+    return usuarioCache;
+  }
+  async function exigir() {
+    if (!desbloqueado) throw new Error('No autorizado');
+    const s = await sesion(); if (!s) throw new Error('No autorizado');
+    const u = await cargarUsuario(s.user.id); if (!u) throw new Error('No autorizado');
+    return u;
+  }
+  const exigirAdmin = async () => { const u = await exigir(); if (u.rol !== 'administrador') throw new Error('No autorizado'); return u; };
+  const esAdmin = (u) => u.rol === 'administrador';
+  const filtrarNeg = (q, negocios) => (negocios && negocios.length ? q.in('negocio_id', negocios) : q);
+
+  const mapCaja = (c) => ({
+    id: c.id, negocioId: c.negocio_id, fecha: c.fecha, estado: c.estado, fondoInicial: c.fondo_inicial, abiertaA: horaCR(c.abierta_en),
+    abiertaPor: c.abierta_por_nombre, cerradaA: horaCR(c.cerrada_en), cerradaPor: c.cerrada_por_nombre || null,
+  });
+  const mapMov = (m, corregidos) => ({
+    id: m.id, cajaId: m.caja_id, negocioId: m.negocio_id, fecha: m.fecha, hora: horaCR(m.creado_en), tipo: m.tipo, monto: m.monto, motivo: m.motivo,
+    nota: m.nota || '', registradoPor: m.registrado_por_nombre, corrigeA: m.corrige_a ?? null, corregido: corregidos.has(m.id),
+  });
+  const mapCompra = (r) => ({
+    clave: r.clave, negocioId: r.negocio_id, dia: r.dia, hora: horaCR(r.emitida_en), proveedor: r.proveedor_nombre, proveedorCedula: r.proveedor_cedula,
+    tipoProveedor: r.tipo_proveedor, clase: r.clase, moneda: r.moneda, total: num(r.total), neto: num(r.neto), iva: num(r.iva),
+    totalCrc: num(r.total_crc), netoCrc: num(r.neto_crc), ivaCrc: num(r.iva_crc), estado: r.estado, grupo: r.grupo, rubro: r.rubro, consecutivo: r.consecutivo,
+  });
+  const mapFilaAgrupada = (f) => ({ clave: f.clave, etiqueta: f.etiqueta, facturas: Number(f.facturas), neto: Number(f.neto), iva: Number(f.iva), total: Number(f.total) });
+  const rpcAgrupada = async ({ negocios, desde, hasta, por, proveedor }) => {
+    await exigirAdmin();
+    const r = ok(await db().rpc('compras_agrupadas', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: desde, p_hasta: hasta, p_por: por, p_proveedor: proveedor || null }));
+    return (r || []).map(mapFilaAgrupada);
   };
-  const obj = {};
-  for (const m of METODOS) obj[m] = pendiente(m);
-  return validarImplementacion(obj);
+  const cajaAbierta = async (negocioId) => ok(await db().from('cajas').select('id').eq('negocio_id', negocioId).eq('estado', 'abierta').limit(1).maybeSingle());
+
+  let ubicCache = null;
+  const fx = async (nombre, args) => ok(await cliente.rpc(nombre, args));
+  const idem = () => (cripto.randomUUID ? cripto.randomUUID() : `${Date.now()}-${Math.random()}`);
+  const itemFx = (i) => ({ articulo_id: i.articuloId, cantidad: String(i.cantidad) });
+  const mapConteo = (r) => ({ id: r.conteo.id, ubicacionId: r.conteo.ubicacion_id, ubicacion: r.conteo.ubicacion, estado: r.conteo.estado, total: Number(r.conteo.lineas), contadas: Number(r.conteo.contadas),
+    lineas: (r.lineas || []).map((l) => ({ articuloId: l.articulo_id, articulo: l.articulo, categoria: l.categoria, unidad: l.unidad, contado: num(l.contado), diferencia: num(l.diferencia) })) });
+
+  const api = {
+    esPrueba: false,
+    acceso: 'correo',
+    async hoy() { return hoy(); },
+
+    async estadoAcceso() {
+      const s = await sesion(); if (!s) return 'sin_sesion';
+      if (!leerPin(s.user.id)) return 'crear_pin';
+      return desbloqueado ? 'abierta' : 'bloqueada';
+    },
+    async iniciarSesion({ correo, clave } = {}) {
+      if (!correo || !clave) throw new Error('Escriba su correo y su contraseña.');
+      const { data, error } = await cliente.auth.signInWithPassword({ email: String(correo).trim(), password: clave });
+      if (error) throw fallo(error);
+      usuarioCache = null; desbloqueado = true;
+      const u = await cargarUsuario(data.user.id);
+      if (!u) { desbloqueado = false; await cliente.auth.signOut(); throw new Error('Su cuenta no tiene acceso a Dixiapp. Pida a la administración que la active.'); }
+      return u;
+    },
+    async configurarPinLocal(pin) {
+      const s = await sesion(); if (!s) throw new Error('No autorizado');
+      if (!/^\d{4,6}$/.test(String(pin))) throw new Error('El PIN debe tener de 4 a 6 dígitos.');
+      const sal = cripto.getRandomValues(new Uint8Array(16));
+      almacen.setItem(claveLS(s.user.id), JSON.stringify({ sal: b64(sal), hash: b64(await hashPin(pin, sal, cripto)), it: ITERACIONES, fallos: 0 }));
+      desbloqueado = true; return cargarUsuario(s.user.id);
+    },
+    async desbloquear(pin) {
+      const s = await sesion(); if (!s) throw new Error('Entre con su correo.');
+      const g = leerPin(s.user.id); if (!g) throw new Error('Este aparato todavía no tiene PIN.');
+      const h = b64(await hashPin(pin, deB64(g.sal), cripto));
+      if (iguales(h, g.hash)) { g.fallos = 0; almacen.setItem(claveLS(s.user.id), JSON.stringify(g)); desbloqueado = true; return cargarUsuario(s.user.id); }
+      g.fallos = (g.fallos || 0) + 1;
+      if (g.fallos >= MAX_FALLOS_PIN) { almacen.removeItem(claveLS(s.user.id)); desbloqueado = false; await cliente.auth.signOut({ scope: 'local' }); throw new Error('Demasiados intentos. Entre de nuevo con su correo.'); }
+      almacen.setItem(claveLS(s.user.id), JSON.stringify(g)); return null;
+    },
+    async bloquear() { desbloqueado = false; },
+    async sesionActual() { if ((await api.estadoAcceso()) !== 'abierta') return null; const s = await sesion(); return cargarUsuario(s.user.id); },
+    async cerrarSesion() { desbloqueado = false; usuarioCache = null; await cliente.auth.signOut(); },
+
+    async negocios() { await exigir(); return ok(await db().from('negocios').select('id,nombre').order('nombre', { ascending: false })); },
+    async horarios() {
+      await exigir();
+      const r = ok(await db().from('horarios').select('negocio_id,servicio,abre,cierra,abierto_24h').order('negocio_id').order('servicio'));
+      return r.map((h) => ({ negocioId: h.negocio_id, servicio: h.servicio, texto: h.abierto_24h ? 'Abierto las 24 horas' : `${horaLegible(h.abre.slice(0, 5))} a ${horaLegible(h.cierra.slice(0, 5))}` }));
+    },
+
+    async cajaActual(negocioId) {
+      const u = await exigir();
+      const c = ok(await db().from('cajas').select('*').eq('negocio_id', negocioId).order('abierta_en', { ascending: false }).limit(1).maybeSingle());
+      if (!c) return null;
+      const base = mapCaja(c);
+      if (!esAdmin(u)) return base; // INFORMACION CIEGA: el servidor tampoco entrega estos datos a un no administrador
+      const r = ok(await db().rpc('resumen_caja', { p_caja: c.id }));
+      return { ...base, entradas: num(r.entradas), salidas: num(r.salidas), esperado: num(r.esperado), ventas: r.ventas, contado: num(r.contado), diferencia: num(r.diferencia) };
+    },
+    async abrirCaja(negocioId, { fondoInicial }) {
+      await exigir();
+      if (!Number.isInteger(fondoInicial) || fondoInicial < 0) throw new Error('El fondo inicial debe ser un monto entero en colones (puede ser cero).');
+      return mapCaja(ok(await db().from('cajas').insert({ negocio_id: negocioId, fondo_inicial: fondoInicial }).select().single()));
+    },
+    async actividad(negocioId, fecha) {
+      await exigir();
+      const cajas = ok(await db().from('cajas').select('*').eq('negocio_id', negocioId).eq('fecha', fecha).order('abierta_en'));
+      const movs = ok(await db().from('movimientos').select('*').eq('negocio_id', negocioId).eq('fecha', fecha).order('creado_en').order('id'));
+      let corregidos = new Set();
+      if (movs.length) corregidos = new Set(ok(await db().from('movimientos').select('corrige_a').in('corrige_a', movs.map((m) => m.id))).map((x) => x.corrige_a));
+      return { cajas: cajas.map(mapCaja), movimientos: movs.map((m) => mapMov(m, corregidos)) };
+    },
+    async registrarMovimiento({ negocioId, tipo, monto, motivo, nota = '' }) {
+      await exigir();
+      if (!['entrada', 'salida'].includes(tipo)) throw new Error('Tipo de movimiento inválido');
+      if (!Number.isInteger(monto) || monto <= 0) throw new Error('El monto debe ser un número entero mayor que cero');
+      if (!String(motivo || '').trim()) throw new Error('Falta el motivo');
+      const caja = await cajaAbierta(negocioId);
+      if (!caja) throw new Error('No hay una caja abierta en este negocio. Ábrala primero.');
+      return mapMov(ok(await db().from('movimientos').insert({ caja_id: caja.id, negocio_id: negocioId, tipo, monto, motivo: String(motivo).trim(), nota: String(nota || '').trim() }).select().single()), new Set());
+    },
+    async corregirMovimiento(id, { nota = '' } = {}) {
+      await exigir();
+      const o = ok(await db().from('movimientos').select('id,negocio_id,tipo,monto,motivo,corrige_a').eq('id', id).maybeSingle());
+      if (!o) throw new Error('El movimiento no existe');
+      if (o.corrige_a) throw new Error('Una corrección no se puede corregir');
+      const caja = await cajaAbierta(o.negocio_id);
+      if (!caja) throw new Error('No hay una caja abierta para registrar la corrección. Ábrala primero.');
+      // El servidor fuerza tipo contrario, mismo monto y motivo "Corrección: ..."; aqui solo se manda lo necesario
+      return mapMov(ok(await db().from('movimientos').insert({ caja_id: caja.id, negocio_id: o.negocio_id, tipo: o.tipo === 'entrada' ? 'salida' : 'entrada', monto: o.monto, motivo: 'Corrección', nota: String(nota || '').trim(), corrige_a: id }).select().single()), new Set());
+    },
+    async sugerenciasMotivos(tipo) {
+      await exigir();
+      return ok(await db().from('motivos').select('texto').eq('tipo', tipo).order('usos', { ascending: false }).order('ultimo_uso', { ascending: false }).limit(8)).map((m) => m.texto);
+    },
+    async cerrarCaja(negocioId, { contado, confirmarFaltante = false }) {
+      await exigir();
+      if (!Number.isInteger(contado) || contado < 0) throw new Error('El efectivo contado debe ser un monto entero en colones');
+      const caja = await cajaAbierta(negocioId);
+      if (!caja) throw new Error('La caja ya está cerrada');
+      const r = ok(await db().rpc('cerrar_caja', { p_caja: caja.id, p_contado: contado, p_confirmar: !!confirmarFaltante }));
+      if (r.requiere_confirmacion) return { cerrada: false, requiereConfirmacion: true, faltante: r.faltante };
+      return r.esperado === undefined ? { cerrada: true } : { cerrada: true, esperado: num(r.esperado), contado: num(r.contado), diferencia: num(r.diferencia) };
+    },
+    async cierres(negocioId, { limite = 7 } = {}) {
+      await exigirAdmin();
+      const cajas = ok(await db().from('cajas').select('*').eq('negocio_id', negocioId).eq('estado', 'cerrada').order('abierta_en', { ascending: false }).limit(limite + 1));
+      const vis = cajas.slice(0, limite);
+      const det = vis.length ? ok(await db().from('cierres_detalle').select('*').in('caja_id', vis.map((c) => c.id))) : [];
+      const porCaja = new Map(det.map((d) => [d.caja_id, d]));
+      return {
+        hayMas: cajas.length > limite,
+        items: vis.map((c) => {
+          const d = porCaja.get(c.id);
+          return { ...mapCaja(c), esperado: num(d?.esperado), contado: num(d?.contado), diferencia: num(d?.diferencia), entradas: num(d?.entradas), salidas: num(d?.salidas),
+                   ventas: d ? { efectivo: num(d.ventas_efectivo), tarjeta: num(d.ventas_tarjeta), sinpe: num(d.ventas_sinpe), transferencia: num(d.ventas_transferencia) } : null };
+        }),
+      };
+    },
+    async resumenSemana(negocioId) {
+      await exigirAdmin();
+      const h = hoy(), lun = lunesDe(h);
+      const movs = ok(await db().from('movimientos').select('fecha,tipo,monto').eq('negocio_id', negocioId).gte('fecha', lun).lte('fecha', h));
+      const dias = []; for (let f = lun; f <= h; f = sumarDias(f, 1)) dias.push(f);
+      const out = dias.map((fecha) => {
+        const m = movs.filter((x) => x.fecha === fecha);
+        const entradas = m.filter((x) => x.tipo === 'entrada').reduce((a, x) => a + x.monto, 0), salidas = m.filter((x) => x.tipo === 'salida').reduce((a, x) => a + x.monto, 0);
+        return { fecha, entradas, salidas, neto: entradas - salidas };
+      });
+      return { dias: out, entradas: out.reduce((a, d) => a + d.entradas, 0), salidas: out.reduce((a, d) => a + d.salidas, 0), neto: out.reduce((a, d) => a + d.neto, 0) };
+    },
+
+    async comprasProveedores({ negocios } = {}) {
+      const h = hoy(); const desde = `${Number(h.slice(0, 4)) - 1}${h.slice(4)}`;
+      const r = await rpcAgrupada({ negocios, desde, hasta: h, por: 'proveedor' });
+      return r.map((f) => ({ cedula: f.clave, nombre: f.etiqueta })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    },
+    async comprasUltimas({ negocios, proveedor = null, limite = 8 } = {}) {
+      await exigirAdmin();
+      let q = db().from('compras_v').select('*');
+      q = filtrarNeg(q, negocios); if (proveedor) q = q.eq('proveedor_cedula', proveedor);
+      return ok(await q.order('emitida_en', { ascending: false }).limit(limite)).map(mapCompra);
+    },
+    async comprasResumen({ negocios, proveedor = null } = {}) {
+      const h = hoy();
+      const dias = await rpcAgrupada({ negocios, desde: desdeResumen(h), hasta: h, por: 'dia', proveedor });
+      return resumenDesdeDias(dias, h);
+    },
+    async comprasAgrupadas(p) { return rpcAgrupada(p); },
+    async comprasSuscribir(cb) {
+      await exigirAdmin();
+      const canal = cliente.channel('dixi-compras').on('postgres_changes', { event: '*', schema: 'dixi', table: 'compras' }, (c) => cb({ tipo: c.eventType, clave: c.new?.clave || c.old?.clave })).subscribe();
+      return () => { cliente.removeChannel(canal); };
+    },
+    // ---------- Bodega: usa las funciones del inventario del facturador (public.fx_inv_*), que ya validan, auditan y son idempotentes ----------
+    async bodegaUbicaciones() {
+      await exigirAdmin();
+      if (!ubicCache) ubicCache = (await fx('fx_inv_catalogos', {})).ubicaciones.filter((u) => u.activo).map((u) => ({ id: u.id, nombre: u.nombre, tipo: u.tipo }));
+      return ubicCache;
+    },
+    async bodegaExistencias({ ubicacion = null, q = '' } = {}) {
+      await exigirAdmin();
+      const r = await fx('fx_inv_existencias', { p_ubicacion: ubicacion, p_categoria: null, p_q: q || '', p_incluir_ceros: true });
+      return r.filas.map((f) => ({ articuloId: f.articulo_id, articulo: f.articulo, categoria: f.categoria, unidad: f.unidad, ubicacionId: f.ubicacion_id, ubicacion: f.ubicacion,
+        cantidad: num(f.cantidad), minimo: num(f.minimo), bajoMinimo: !!f.bajo_minimo, vencida: num(f.cantidad_vencida) > 0, proximoVencimiento: f.proximo_vencimiento || null }));
+    },
+    async bodegaAlertas() {
+      await exigirAdmin(); const r = await fx('fx_inv_alertas', {});
+      const base = (x) => ({ articuloId: x.articulo_id, articulo: x.articulo, unidad: x.unidad, ubicacionId: x.ubicacion_id, ubicacion: x.ubicacion });
+      return {
+        bajoMinimo: r.bajo_minimo.map((x) => ({ ...base(x), existencia: num(x.existencia), minimo: num(x.minimo), faltante: num(x.faltante) })),
+        vencenPronto: r.vencen_pronto.map((x) => ({ ...base(x), cantidad: num(x.cantidad), venceEn: x.vence_en, dias: x.dias_para_vencer })),
+        vencidos: r.vencidos.map((x) => ({ ...base(x), cantidad: num(x.cantidad), venceEn: x.vence_en })),
+        porRecibir: Number(r.por_recibir || 0),
+      };
+    },
+    async bodegaPorRecibir() {
+      await exigirAdmin(); const r = await fx('fx_inv_pendientes', { p_sociedad: null, p_q: '', p_limite: 50 });
+      return r.facturas.filter((f) => f.puede_recibir !== false).map((f) => ({ clave: f.clave, proveedor: f.proveedor_nombre, fecha: f.fecha, empresa: f.sociedad_nombre, total: num(f.total),
+        lineas: (f.lineas || []).map((l) => {
+          const s = l.sugerencia && (l.sugerencia.articulo_id || l.sugerencia.articulo?.id) ? l.sugerencia : null;
+          return { linea: l.linea, descripcion: l.descripcion, cantidad: num(l.cantidad), unidad: l.unidad,
+            sugerencia: s ? { articuloId: s.articulo_id || s.articulo.id, articulo: s.articulo_nombre || (typeof s.articulo === 'string' ? s.articulo : s.articulo?.nombre) || 'Artículo', factor: num(s.factor) || 1, unidad: s.unidad_articulo || s.unidad || '' } : null };
+        }) }));
+    },
+    async bodegaRecibir({ lineas }) {
+      await exigirAdmin(); if (!lineas?.length) throw new Error('No hay líneas para recibir.');
+      const r = await fx('fx_inv_recibir', { p_lineas: lineas.map((l) => ({ clave: l.clave, linea: l.linea, articulo_id: l.articuloId, ...(l.factor ? { factor: l.factor } : {}) })), p_idem: idem() });
+      return { recibidas: lineas.length, detalle: r };
+    },
+    async bodegaSalida({ tipo, ubicacion, items, motivo }) {
+      await exigirAdmin(); await fx('fx_inv_salida', { p_tipo: tipo, p_ubicacion: ubicacion, p_items: items.map(itemFx), p_motivo: motivo, p_idem: idem() }); return { items: items.length };
+    },
+    async bodegaTrasladar({ origen, destino, items, motivo }) {
+      await exigirAdmin(); await fx('fx_inv_trasladar', { p_origen: origen, p_destino: destino, p_items: items.map(itemFx), p_motivo: motivo || null, p_idem: idem() }); return { items: items.length };
+    },
+    async bodegaConteo(ubicacion) {
+      await exigirAdmin(); const r = await fx('fx_inv_conteos', { p_ubicacion: ubicacion, p_estado: 'abierto', p_limite: 1 });
+      return r.conteos?.length ? mapConteo(await fx('fx_inv_conteo', { p_conteo: r.conteos[0].id })) : null;
+    },
+    async bodegaConteoIniciar(ubicacion) { await exigirAdmin(); return mapConteo(await fx('fx_inv_conteo_iniciar', { p_ubicacion: ubicacion, p_nota: null, p_idem: idem() })); },
+    async bodegaConteoRegistrar(conteoId, items) {
+      await exigirAdmin(); return mapConteo(await fx('fx_inv_conteo_registrar', { p_conteo: conteoId, p_items: items.map((i) => ({ articulo_id: i.articuloId, contado: String(i.contado) })), p_idem: idem() }));
+    },
+    async bodegaConteoConfirmar(conteoId) {
+      await exigirAdmin(); const r = await fx('fx_inv_conteo_confirmar', { p_conteo: conteoId, p_idem: idem() });
+      return { ajustes: r.ajustes.map((a) => ({ articulo: a.articulo, unidad: a.unidad, esperado: num(a.esperado), contado: num(a.contado), diferencia: num(a.diferencia) })), sinCambio: r.sin_cambio, noContados: (r.no_contados || []).length };
+    },
+    async bodegaConteoCancelar(conteoId, motivo = 'Cancelado desde Dixiapp') { await exigirAdmin(); await fx('fx_inv_conteo_cancelar', { p_conteo: conteoId, p_motivo: motivo, p_idem: idem() }); },
+    async bodegaAjustar({ ubicacion, items, motivo }) {
+      await exigirAdmin(); const r = await fx('fx_inv_ajustar', { p_ubicacion: ubicacion, p_items: items.map((i) => ({ articulo_id: i.articuloId, cantidad_real: String(i.cantidadReal) })), p_motivo: motivo, p_idem: idem() });
+      return { ajustes: r.ajustes.map((a) => ({ articulo: a.articulo, antes: num(a.antes), despues: num(a.despues), diferencia: num(a.diferencia) })) };
+    },
+    async bodegaMovimientos({ ubicacion = null, limite = 10 } = {}) {
+      await exigirAdmin(); const h = hoy(), d = new Date(new Date(`${h}T12:00:00`).getTime() - 30 * 86400000).toLocaleDateString('en-CA');
+      const r = await fx('fx_inv_movimientos', { p_desde: d, p_hasta: h, p_articulo: null, p_ubicacion: ubicacion, p_tipo: null, p_limite: limite });
+      return (Array.isArray(r) ? r : r.movimientos || r.filas || []).slice(0, limite).map((m) => ({ id: m.id, tipo: m.tipo, tipoNombre: m.tipo_nombre, articulo: m.articulo, unidad: m.unidad, cantidad: num(m.cantidad),
+        ubicacion: m.ubicacion, motivo: m.motivo, usuario: m.usuario_nombre || m.usuario, fecha: m.fecha, hora: horaCR(m.creado_en), signo: Math.sign(num(m.valor) || 0) || 0 }));
+    },
+    async restablecerPrueba() { throw new Error('Solo existe en el modo de prueba.'); },
+  };
+  return validarImplementacion(api);
 }
