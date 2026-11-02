@@ -1,0 +1,7 @@
+{
+  "appId": "cr.dmalabomba.dixiapp",
+  "appName": "Dixiapp",
+  "webDir": "web",
+  "backgroundColor": "#ffffff",
+  "android": { "allowMixedContent": false }
+}

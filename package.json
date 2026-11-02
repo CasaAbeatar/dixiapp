@@ -1,0 +1,21 @@
+{
+  "name": "dixiapp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dixiapp: app interna de caja de Grupo DMA La Bomba (primera version, solo datos de prueba)",
+  "type": "module",
+  "scripts": {
+    "servir": "node scripts/servir.js",
+    "iconos": "node scripts/generar-iconos.js",
+    "test": "node --test tests/datos.test.js",
+    "test:e2e": "node tests/flujo.e2e.js",
+    "capturas": "node scripts/capturas.js",
+    "cap:sync": "cap sync android",
+    "apk:debug": "npm run cap:sync && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  }
+}
