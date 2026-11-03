@@ -1,6 +1,6 @@
 // Service worker de Dixiapp: cachea SOLO la interfaz (archivos estaticos de esta lista).
 // Nunca guarda datos de caja: cualquier otra peticion (por ejemplo Supabase) va directo a la red.
-const VERSION = 'dixiapp-interfaz-v9';
+const VERSION = 'dixiapp-interfaz-v10';
 const INTERFAZ = [
   './', './index.html', './estilos.css', './manifest.webmanifest',
   './src/app.js', './src/vistas.js', './src/vistas-compras.js', './src/vistas-inicio.js', './src/mensajes.js', './src/vistas-bodega.js', './src/bodega.js', './src/ui.js', './vendor/supabase-js.js',

@@ -113,45 +113,29 @@ function selector(b, catalogo, k) {
     ${boton('b-elegir', 'Cerrar', 'chico', `data-valor="${esc(k)}"`)}</div>`;
 }
 
-export function vistaRecibir({ b, facturas, recibidas, notas, catalogo, ubicaciones, hoy }) {
+export function vistaRecibir({ b, facturas, recibidas, notas, hoy }) {
+  // Solo informativo: la recepcion de facturas, deshacer y devoluciones se deciden en el facturador, no en Dixiapp
   const sub = `<div class="fichas segmento" role="group" aria-label="Qué ver">${[['pendientes', `Por recibir${facturas.length ? ` (${facturas.length})` : ''}`], ['recibidas', 'Ya recibidas'], ['notas', `Notas de crédito${notas.length ? ` (${notas.length})` : ''}`]]
     .map(([k, t]) => `<button class="ficha" data-accion="b-sub" data-valor="${k}" aria-pressed="${b.sub === k}">${t}</button>`).join('')}</div>`;
+  const aviso = '<p class="pie">Aquí solo se consulta. La recepción de facturas se decide en el facturador.</p>';
   if (b.sub === 'recibidas') {
-    const filas = recibidas.map((r) => {
-      const k = `${r.clave}|${r.linea}`, abre = b.deshaciendo === k;
-      return `<li class="mov"><div><b>${esc(r.articulo)}</b></div><div class="monto num">${n(r.cantidad)} ${esc(r.unidad)}</div><div class="sub">${esc(fechaLarga(r.fecha))} · ${esc(r.ubicacion)}${r.descripcion ? ' · ' + esc(r.descripcion) : ''}</div>
-        <div class="sub">${r.deshacible ? (abre ? `<label class="campo"><span>Motivo</span><input type="text" id="b-motivo-des" autocomplete="off" value="${esc(b.motivoDes)}"></label><div class="acciones">${boton('b-pedir-deshacer', 'No, dejarla', '', `data-valor="${esc(k)}"`)}${boton('b-deshacer', 'Sí, deshacer', 'peligro', `data-valor="${esc(k)}"`)}</div>` : boton('b-pedir-deshacer', 'Deshacer esta recepción', 'chico', `data-valor="${esc(k)}"`))
-          : '<span class="a-sub">Ya se usó o se pasó parte: corríjalo con un ajuste en Existencias.</span>'}</div></li>`;
-    }).join('');
-    return `${sub}<section class="tarjeta"><ul class="lista">${filas || '<li class="vacio">No hay recepciones recientes.</li>'}</ul>
-      <p class="pie">Deshacer deja un movimiento nuevo («Recepción deshecha») y la línea vuelve a quedar por recibir. Solo se puede mientras nada del lote se haya usado.</p></section>`;
+    const filas = recibidas.map((r) => `<li class="mov"><div><b>${esc(r.articulo)}</b></div><div class="monto num">${n(r.cantidad)} ${esc(r.unidad)}</div><div class="sub">${esc(fechaLarga(r.fecha))} · ${esc(r.ubicacion)} · ${esc(r.proveedor)}${r.descripcion ? ' · ' + esc(r.descripcion) : ''}</div></li>`).join('');
+    return `${sub}<section class="tarjeta"><ul class="lista">${filas || '<li class="vacio">No hay recepciones recientes.</li>'}</ul>${aviso}</section>`;
   }
   if (b.sub === 'notas') {
-    if (!notas.length) return `${sub}<section class="tarjeta"><p class="vacio" style="margin:0">No hay notas de crédito de proveedores por revisar.</p></section>`;
-    return sub + notas.map((nt) => {
-      const abre = b.notaAbierta === nt.clave;
-      const lin = nt.lineas.map((l) => `<li class="mov"><div><b>${esc(l.descripcion)}</b></div><div class="monto num">${n(l.cantidad)} ${esc(l.unidad)}</div>
-        ${abre && l.articuloId ? `<div class="sub"><div class="stepper"><span>Sale de ${esc(l.articulo)}:</span><input class="b-nota-cant num" inputmode="decimal" data-articulo="${esc(l.articuloId)}" value="${esc(String(b.notaCant[l.articuloId] ?? n(l.cantidad * l.factor)))}" aria-label="Cantidad de ${esc(l.articulo)} que se devuelve"></div></div>`
-          : `<div class="sub">${l.articuloId ? `Descuenta <b>${esc(l.articulo)}</b>` : '<span class="mal">Sin artículo: recíbalo primero desde la factura original.</span>'}</div>`}</li>`).join('');
-      const lugares = abre ? `<div class="campo" style="margin-top:10px"><span>Sale de</span><div class="fichas">${ubicaciones.map((u) => `<button class="ficha" data-accion="b-nota-ubic" data-valor="${esc(u.id)}" aria-pressed="${b.notaUbic === u.id}">${esc(u.nombre)}</button>`).join('')}</div></div>` : '';
-      return `<section class="tarjeta" style="margin-bottom:14px"><div class="cierre-cab"><h3>${esc(nt.proveedor)}</h3><b class="num">${colones(nt.total)}</b></div><div class="etq">${esc(nt.tipo)} · ${esc(fechaLarga(nt.fecha))} · ${esc(nt.empresa)}</div>
-        <ul class="lista">${lin}</ul>${lugares}
-        <div class="acciones" style="margin-top:12px">${abre ? boton('b-nota-abrir', 'Cerrar', '', `data-valor="${esc(nt.clave)}"`) + boton('b-nota-devolver', 'Registrar la devolución', 'primario', `data-valor="${esc(nt.clave)}"`) : boton('b-nota-ignorar', 'No afecta el inventario', '', `data-valor="${esc(nt.clave)}"`) + boton('b-nota-abrir', 'Devolver mercadería', 'primario', `data-valor="${esc(nt.clave)}"`)}</div></section>`;
-    }).join('') + '<p class="pie">La devolución saca la mercadería del lugar elegido, ligada a la nota de crédito; no se puede repetir.</p>';
+    if (!notas.length) return `${sub}<section class="tarjeta"><p class="vacio" style="margin:0">No hay notas de crédito de proveedores por revisar.</p>${aviso}</section>`;
+    return sub + notas.map((nt) => `<section class="tarjeta" style="margin-bottom:14px"><div class="cierre-cab"><h3>${esc(nt.proveedor)}</h3><b class="num">${colones(nt.total)}</b></div><div class="etq">${esc(nt.tipo)} · ${esc(fechaLarga(nt.fecha))} · ${esc(nt.empresa)}</div>
+      <ul class="lista">${nt.lineas.map((l) => `<li class="mov"><div><b>${esc(l.descripcion)}</b></div><div class="monto num">${n(l.cantidad)} ${esc(l.unidad)}</div><div class="sub">${l.articuloId ? `Descontaría <b>${esc(l.articulo)}</b>` : 'Todavía sin artículo asignado'}</div></li>`).join('')}</ul></section>`).join('') + aviso;
   }
-  if (!facturas.length) return `${sub}<section class="tarjeta"><p class="vacio" style="margin:0">No hay facturas de proveedores por recibir.</p></section>`;
+  if (!facturas.length) return `${sub}<section class="tarjeta"><p class="vacio" style="margin:0">No hay facturas de proveedores por recibir.</p>${aviso}</section>`;
   const ordenadas = [...facturas].sort((x, y) => (y.fecha === hoy) - (x.fecha === hoy) || y.fecha.localeCompare(x.fecha));
   let grupo = '';
   const html = ordenadas.map((f) => {
-    const listas = f.lineas.filter((l) => l.sugerencia || b.asig[`${f.clave}|${l.linea}`]);
     const sep = (f.fecha === hoy ? 'Hoy' : 'Antes de hoy'); const cab = sep !== grupo ? `<h2 class="titulo-seccion">${sep}</h2>` : ''; grupo = sep;
-    const abierta = b.picker && b.picker.startsWith(`${f.clave}|`);
     return `${cab}<section class="tarjeta" style="margin-bottom:14px"><div class="cierre-cab"><h3>${esc(f.proveedor)}</h3><b class="num">${colones(f.total)}</b></div>
-      <div class="etq">${esc(fechaLarga(f.fecha))} · ${esc(f.empresa)}</div><ul class="lista">${f.lineas.map((l) => lineaFactura(b, f, l) + (b.picker === `${f.clave}|${l.linea}` ? `<li class="mov">${selector(b, catalogo, b.picker)}</li>` : '')).join('')}</ul>
-      ${listas.length ? `<label class="campo" style="margin-top:12px"><span>Vence (si lo sabe, para todo lo que recibe ahora) <small>opcional</small></span><input type="date" class="b-vence" data-clave="${esc(f.clave)}" value="${esc(b.vence[f.clave] || '')}"></label>
-        ${boton('b-recibir', `Recibir ${listas.length === f.lineas.length ? 'todo' : `${listas.length} de ${f.lineas.length} líneas`}`, 'primario bloque', `data-valor="${esc(f.clave)}"`)}` : '<p class="pie">Nada para recibir hasta que se asigne un artículo a cada línea.</p>'}</section>`;
+      <div class="etq">${esc(fechaLarga(f.fecha))} · ${esc(f.empresa)}</div><ul class="lista">${f.lineas.map((l) => `<li class="mov"><div><b>${esc(l.descripcion)}</b></div><div class="monto num">${n(l.cantidad)} ${esc(l.unidad)}</div><div class="sub">${l.sugerencia?.articulo ? `Sumaría a <b>${esc(l.sugerencia.articulo)}</b>` : 'Todavía sin artículo asignado'}</div></li>`).join('')}</ul></section>`;
   }).join('');
-  return sub + html + '<p class="pie">Lo que se recibe suma a la Bodega central, con el costo de la factura (sin IVA). El artículo elegido queda recordado para la próxima factura del proveedor.</p>';
+  return sub + html + aviso;
 }
 
 export function vistaContar({ b, conteo, ubicacion, hoy, movimientos }) {
