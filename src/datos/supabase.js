@@ -190,29 +190,6 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
       if (movs.length) corregidos = new Set(ok(await db().from('movimientos').select('corrige_a').in('corrige_a', movs.map((m) => m.id))).map((x) => x.corrige_a));
       return { cajas: cajas.map(mapCaja), movimientos: movs.map((m) => mapMov(m, corregidos)) };
     },
-    async registrarMovimiento({ negocioId, tipo, monto, motivo, nota = '' }) {
-      await exigir();
-      if (!['entrada', 'salida'].includes(tipo)) throw new Error('Tipo de movimiento inválido');
-      if (!Number.isInteger(monto) || monto <= 0) throw new Error('El monto debe ser un número entero mayor que cero');
-      if (!String(motivo || '').trim()) throw new Error('Falta el motivo');
-      const caja = await cajaAbierta(negocioId);
-      if (!caja) throw new Error('No hay una caja abierta en este negocio. Ábrala primero.');
-      return mapMov(ok(await db().from('movimientos').insert({ caja_id: caja.id, negocio_id: negocioId, tipo, monto, motivo: String(motivo).trim(), nota: String(nota || '').trim() }).select().single()), new Set());
-    },
-    async corregirMovimiento(id, { nota = '' } = {}) {
-      await exigir();
-      const o = ok(await db().from('movimientos').select('id,negocio_id,tipo,monto,motivo,corrige_a').eq('id', id).maybeSingle());
-      if (!o) throw new Error('El movimiento no existe');
-      if (o.corrige_a) throw new Error('Una corrección no se puede corregir');
-      const caja = await cajaAbierta(o.negocio_id);
-      if (!caja) throw new Error('No hay una caja abierta para registrar la corrección. Ábrala primero.');
-      // El servidor fuerza tipo contrario, mismo monto y motivo "Corrección: ..."; aqui solo se manda lo necesario
-      return mapMov(ok(await db().from('movimientos').insert({ caja_id: caja.id, negocio_id: o.negocio_id, tipo: o.tipo === 'entrada' ? 'salida' : 'entrada', monto: o.monto, motivo: 'Corrección', nota: String(nota || '').trim(), corrige_a: id }).select().single()), new Set());
-    },
-    async sugerenciasMotivos(tipo) {
-      await exigir();
-      return ok(await db().from('motivos').select('texto').eq('tipo', tipo).order('usos', { ascending: false }).order('ultimo_uso', { ascending: false }).limit(8)).map((m) => m.texto);
-    },
     async cerrarCaja(negocioId, { contado, confirmarFaltante = false }) {
       const u = await exigir(); if (u.rol === 'administrador') throw new Error('El cierre y la apertura de caja los hacen las cajeras en el facturador, no en esta app.');
       if (!Number.isInteger(contado) || contado < 0) throw new Error('El efectivo contado debe ser un monto entero en colones');
@@ -236,6 +213,24 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
                    ventas: d ? { efectivo: num(d.ventas_efectivo), tarjeta: num(d.ventas_tarjeta), sinpe: num(d.ventas_sinpe), transferencia: num(d.ventas_transferencia) } : null };
         }),
       };
+    },
+    // Cierres de caja del FACTURADOR (turnos que abren y cierran las cajeras). Solo administradores: el servidor lo exige (dixi.cierres_turnos).
+    // Un turno abierto llega sin cifras. El dia y las horas se sacan aqui en hora de Costa Rica.
+    async cierresTurnos({ negocios, desde = null, hasta = null, limite = 120 } = {}) {
+      await exigirAdmin();
+      const r = ok(await db().rpc('cierres_turnos', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: desde, p_hasta: hasta, p_limite: limite }));
+      const mov = (l) => (l || []).map((m) => ({ motivo: m.motivo, monto: num(m.monto), hora: horaCR(m.en), por: m.por || '' }));
+      const turnos = (r.turnos || []).map((t) => {
+        const base = { id: t.id, negocioId: t.negocio_id, terminal: t.terminal ?? null, estado: t.estado, abiertoPor: t.abierto_por || 'Sin dato', abiertoDia: fechaCR(t.abierto_en), abiertoHora: horaCR(t.abierto_en) };
+        if (t.estado !== 'cerrado') return { ...base, dia: base.abiertoDia };
+        const v = t.ventas || {};
+        return { ...base, dia: fechaCR(t.cerrado_en), numero: t.numero == null ? null : Number(t.numero), cerradoPor: t.cerrado_por || 'Sin dato', cerradoHora: horaCR(t.cerrado_en),
+          fondo: num(t.fondo), entradas: num(t.entradas), salidas: num(t.salidas), devolucionesEfectivo: num(t.devoluciones_efectivo) || 0, cobrosNotaDebito: num(t.cobros_nota_debito_efectivo) || 0,
+          ventas: { efectivo: num(v.efectivo) || 0, tarjeta: num(v.tarjeta) || 0, sinpe: num(v.sinpe) || 0, transferencia: num(v.transferencia) || 0, otros: num(v.otros) || 0 },
+          totalVentas: num(t.total_ventas) || 0, ventasNetas: num(t.ventas_netas) || 0, esperado: num(t.esperado), contado: num(t.contado), diferencia: num(t.diferencia), nota: t.nota || '',
+          movEntradas: mov(t.mov_entradas), movSalidas: mov(t.mov_salidas) };
+      });
+      return { generado: r.generado, hoy: r.hoy, hayMas: !!r.hay_mas, turnos };
     },
     async resumenSemana(negocioId) {
       await exigirAdmin();

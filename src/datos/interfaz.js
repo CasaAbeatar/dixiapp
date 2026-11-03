@@ -16,7 +16,7 @@
 //
 // Permisos: un cajero (cualquier rol activo del negocio) abre y cierra caja y ve la actividad de cualquier fecha,
 // pero NUNCA el esperado, el sobrante ni las ventas. Lo demas lanza Error('No autorizado').
-// Los movimientos no se editan ni se borran: se corrigen con un contramovimiento (corregirMovimiento).
+// Dixiapp SOLO CONSULTA el efectivo: las entradas y salidas se registran y corrigen en el facturador (decision de Emil, 3 nov 2026). No hay metodos para registrarlas ni corregirlas.
 
 export const METODOS = [
   'hoy',                  // () => 'AAAA-MM-DD' (hora de Costa Rica)
@@ -32,11 +32,9 @@ export const METODOS = [
   'cajaActual',           // (negocioId) => Caja | null   (la abierta, o la ultima cerrada)
   'abrirCaja',            // (negocioId, {fondoInicial}) => Caja
   'actividad',            // (negocioId, fecha) => { cajas: Caja[], movimientos: Movimiento[] }
-  'registrarMovimiento',  // ({negocioId, tipo, monto, motivo, nota}) => Movimiento
-  'corregirMovimiento',   // (movimientoId, {nota}) => Movimiento (el contramovimiento)
-  'sugerenciasMotivos',   // (tipo) => string[]
   'cerrarCaja',           // (negocioId, {contado, confirmarFaltante}) => {cerrada:true} | {requiereConfirmacion:true, faltante}
   'cierres',              // (negocioId, {limite}) => { items: Cierre[], hayMas }      [administrador]
+  'cierresTurnos',        // ({negocios, desde, hasta, limite}) => { generado, hoy, hayMas, turnos: Turno[] }  [administrador] turnos de caja del FACTURADOR, del mas reciente al mas antiguo. Turno {id, negocioId, terminal, estado:'abierto'|'cerrado', dia (AAAA-MM-DD del cierre; de la apertura si sigue abierto), abiertoPor, abiertoDia, abiertoHora:'HH:MM'} y, SOLO si esta cerrado: numero, cerradoPor, cerradoHora, fondo, entradas, salidas, devolucionesEfectivo, cobrosNotaDebito, ventas {efectivo,tarjeta,sinpe,transferencia,otros}, totalVentas, ventasNetas, esperado, contado, diferencia (negativa = faltante), nota, movEntradas/movSalidas [{motivo, monto, hora, por}]. Un turno abierto no trae ninguna cifra. Montos con IVA
   'resumenSemana',        // (negocioId) => { dias:[{fecha,entradas,salidas,neto}], entradas, salidas, neto } [administrador]
   // Compras (solo administradores)
   'comprasProveedores',   // ({negocios, desde, hasta, rubro}) => [{cedula, nombre (comercial si existe), legal, facturas, neto, iva, total}] por nombre

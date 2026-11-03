@@ -3,7 +3,7 @@
 // Se apaga poniendo `ejemplo: false` en config.js: la app vuelve a leer todo de la base real.
 import { crearDatosPrueba } from './prueba.js';
 
-const EJEMPLO = ['cajaActual', 'abrirCaja', 'actividad', 'registrarMovimiento', 'corregirMovimiento', 'sugerenciasMotivos', 'cerrarCaja', 'cierres', 'resumenSemana',
+const EJEMPLO = ['cajaActual', 'abrirCaja', 'actividad', 'cerrarCaja', 'cierres', 'resumenSemana',
   'ventasEnVivo', 'ventasAgrupadas', 'ventasTop', 'ventasPorHora', 'ventasSuscribir', 'viajes', 'viajeAgregar', 'diferenciasPendientes', 'diferenciaResolver',
   'movimientosRecientes', 'movimientosSuscribir'];
 // Pestanas que muestran datos de ejemplo (la etiqueta se ve arriba de la pantalla)
@@ -17,7 +17,17 @@ export function crearDatosMixto(real, opciones = {}) {
   for (const m of EJEMPLO) api[m] = async (...a) => { await abrirEjemplo(); return ej[m](...a); };
   api.cerrarSesion = async () => { await ej.cerrarSesion(); return real.cerrarSesion(); };
   api.bloquear = async () => { await ej.cerrarSesion(); return real.bloquear(); };
+  // Cierres de caja del facturador: si la base ya tiene turnos REALES se muestran esos (sin etiqueta de ejemplo); si no hay ninguno, sigue el ejemplo etiquetado.
+  let cierresReales = false;
+  api.cierresTurnos = async (p = {}) => {
+    try {
+      const r = await real.cierresTurnos(p);
+      cierresReales = r.turnos.length > 0 || (await real.cierresTurnos({ limite: 1 })).turnos.length > 0; // filtro sin resultados no cambia la fuente
+      if (cierresReales) return r;
+    } catch { cierresReales = false; }
+    await abrirEjemplo(); return ej.cierresTurnos(p);
+  };
   api.ejemplo = true;
-  api.esEjemploEn = (pestana) => PESTANAS_EJEMPLO.includes(pestana);
+  api.esEjemploEn = (pestana) => (pestana === 'Cierres' ? !cierresReales : PESTANAS_EJEMPLO.includes(pestana));
   return api;
 }
