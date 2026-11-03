@@ -145,6 +145,7 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
   const exigirNegocio = (u, negocioId) => { if (!u.negocios.includes(negocioId)) throw new Error('No autorizado'); };
   let fallos = 0, bloqueoHasta = 0;
   const oyentes = new Set();
+  const oyentesMov = new Set();
   const avisar = (c) => oyentes.forEach((f) => { try { f(c); } catch { /* un oyente roto no frena a los demas */ } });
 
   const movsDeCaja = (e, cajaId) => e.movimientos.filter((m) => m.cajaId === cajaId);
@@ -220,7 +221,7 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
       const e = leer(); const caja = cajaAbierta(e, negocioId);
       if (!caja) throw new Error('No hay una caja abierta en este negocio. Ábrala primero.');
       const mov = { id: `mov-${e.siguiente++}`, cajaId: caja.id, negocioId, fecha: hoy(), hora: horaTexto(ahora()), tipo, monto, motivo: mot, nota: String(nota || '').trim(), registradoPor: u.nombre, corrigeA: null };
-      e.movimientos.push(mov); aprender(e, tipo, mot); guardar(e); return { ...mov, corregido: false };
+      e.movimientos.push(mov); aprender(e, tipo, mot); guardar(e); oyentesMov.forEach((f) => { try { f({ ...mov, corregido: false }); } catch { /* oyente roto */ } }); return { ...mov, corregido: false };
     },
     async corregirMovimiento(id, { nota = '' } = {}) {
       const u = exigir(); const e = leer();
@@ -281,6 +282,21 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
       const u = exigirAdmin();
       return agruparCompras(comprasVisibles(leer(), u, negocios), { desde, hasta, por, proveedor });
     },
+    async viajes() { exigir(); return (leer().viajes || []).slice().reverse(); },
+    async viajeAgregar({ destino, fecha }) {
+      const u = exigir(); if (!String(destino || '').trim() || !fecha) throw new Error('Falta el destino o la fecha');
+      const e = leer(); e.viajes = e.viajes || []; e.viajes.push({ id: e.viajes.length + 1, destino: String(destino).trim(), fecha, creadoPor: u.nombre, creadoEn: ahora().toISOString() }); guardar(e); return true;
+    },
+    async diferenciasPendientes() {
+      exigirAdmin(); const e = leer(); const hechas = new Set(e.resueltas || []);
+      return e.cajas.filter((c) => c.estado === 'cerrada' && !hechas.has(c.id)).map((c) => { const v = vistaCaja(e, c, true); return { cajaId: c.id, negocioId: c.negocioId, fecha: c.fecha, diferencia: v.diferencia ?? 0 }; }).filter((d) => d.diferencia !== 0);
+    },
+    async diferenciaResolver({ cajaId }) { exigirAdmin(); const e = leer(); e.resueltas = [...(e.resueltas || []), cajaId]; guardar(e); return true; },
+    async movimientosRecientes({ limite = 8 } = {}) {
+      const u = exigir(); const e = leer();
+      return e.movimientos.filter((m) => m.fecha === hoy() && u.negocios.includes(m.negocioId)).slice().reverse().slice(0, limite).map((m) => ({ ...m, corregido: false }));
+    },
+    async movimientosSuscribir(cb) { exigir(); oyentesMov.add(cb); return () => oyentesMov.delete(cb); },
     async comprasSuscribir(cb) { exigirAdmin(); oyentes.add(cb); return () => oyentes.delete(cb); },
     async restablecerPrueba() { exigir(); guardar(generarSemilla(hoy())); reiniciarBodega(); },
     // Solo de prueba (no es parte del contrato): simula que llega una factura nueva del proveedor

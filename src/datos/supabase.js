@@ -260,6 +260,42 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
       return resumenDesdeDias(dias, h);
     },
     async comprasAgrupadas(p) { return rpcAgrupada(p); },
+    // ---------- Inicio de Dixia ----------
+    async viajes() {
+      await exigir();
+      return ok(await db().from('viajes').select('id,destino,fecha,creado_en,creado_por_nombre').order('creado_en', { ascending: false }).limit(20))
+        .map((v) => ({ id: v.id, destino: v.destino, fecha: v.fecha, creadoPor: v.creado_por_nombre, creadoEn: v.creado_en }));
+    },
+    async viajeAgregar({ destino, fecha }) {
+      await exigir();
+      if (!String(destino || '').trim()) throw new Error('Falta el destino');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || ''))) throw new Error('Falta la fecha');
+      ok(await db().from('viajes').insert({ destino: String(destino).trim(), fecha }));
+      return true;
+    },
+    async diferenciasPendientes() {
+      await exigirAdmin();
+      const det = ok(await db().from('cierres_detalle').select('caja_id,negocio_id,diferencia').neq('diferencia', 0).order('caja_id', { ascending: false }).limit(60));
+      if (!det.length) return [];
+      const ids = det.map((d) => d.caja_id);
+      const [res, cajas] = await Promise.all([db().from('diferencias_resueltas').select('caja_id').in('caja_id', ids), db().from('cajas').select('id,fecha').in('id', ids)]);
+      const hechas = new Set(ok(res).map((r) => r.caja_id)); const fechas = new Map(ok(cajas).map((c) => [c.id, c.fecha]));
+      return det.filter((d) => !hechas.has(d.caja_id)).map((d) => ({ cajaId: d.caja_id, negocioId: d.negocio_id, fecha: fechas.get(d.caja_id), diferencia: num(d.diferencia) }));
+    },
+    async diferenciaResolver({ cajaId, nota = '' }) {
+      await exigirAdmin();
+      ok(await db().from('diferencias_resueltas').insert({ caja_id: cajaId, nota: String(nota || '').trim() }));
+      return true;
+    },
+    async movimientosRecientes({ limite = 8 } = {}) {
+      await exigir();
+      return ok(await db().from('movimientos').select('*').eq('fecha', hoy()).order('creado_en', { ascending: false }).order('id', { ascending: false }).limit(limite)).map((m) => mapMov(m, new Set()));
+    },
+    async movimientosSuscribir(cb) {
+      await exigir();
+      const canal = cliente.channel('dixi-movimientos').on('postgres_changes', { event: 'INSERT', schema: 'dixi', table: 'movimientos' }, (c) => cb(mapMov(c.new, new Set()))).subscribe();
+      return () => { cliente.removeChannel(canal); };
+    },
     async comprasSuscribir(cb) {
       await exigirAdmin();
       const canal = cliente.channel('dixi-compras').on('postgres_changes', { event: '*', schema: 'dixi', table: 'compras' }, (c) => cb({ tipo: c.eventType, clave: c.new?.clave || c.old?.clave })).subscribe();

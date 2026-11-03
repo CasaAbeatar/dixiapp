@@ -1,5 +1,5 @@
 import { datos } from './datos/index.js';
-import { leerMonto, aplicarTema } from './ui.js';
+import { leerMonto, aplicarTema, esc } from './ui.js';
 import { vistaPin, vistaEntrada, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas } from './vistas.js';
 import { vistaCompras } from './vistas-compras.js';
 import { vistaInicio, diasHasta } from './vistas-inicio.js';
@@ -15,12 +15,11 @@ const leerLS = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { 
 const escribirLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
 const miles = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-function leerViaje() { try { const v = JSON.parse(localStorage.getItem('dixiapp.viaje') || 'null'); return v && v.destino && v.fecha ? v : null; } catch { return null; } }
 const s = {
   acceso: 'sin_sesion', usuario: null, negocios: [], negocioId: null, pestana: 'Caja', tema: leerLS('dixiapp.tema', 'auto'),
   pin: '', pin1: '', faseCrear: 'nuevo', errorPin: '', correo: '', errorCorreo: '', cargando: false,
   fecha: null, form: null, aviso: '', error: '', fondo: '', cierre: null, corrigiendo: null, limite: 7,
-  filtro: { neg: 'ambos', proveedor: '' }, bodega: estadoBodega(), viaje: leerViaje(), viajeForm: null, por: 'dia', abierta: null, vivo: false, ultimo: Date.now(), esperado: 0,
+  filtro: { neg: 'ambos', proveedor: '' }, bodega: estadoBodega(), viaje: null, viajeForm: null, resolviendo: null, notaDif: '', avisoEfectivo: '', por: 'dia', abierta: null, vivo: false, ultimo: Date.now(), esperado: 0,
 };
 aplicarTema(s.tema);
 
@@ -75,20 +74,24 @@ async function construirInicio(hoy) {
     const [caja, act] = await Promise.all([datos.cajaActual(n.id), datos.actividad(n.id, hoy)]);
     return { id: n.id, nombre: n.nombre, caja, movs: act.movimientos.length };
   }));
-  const [alertas, compras, cierres] = await Promise.all([
+  const nombreNeg = (id) => s.negocios.find((n) => n.id === id)?.nombre || id;
+  const [alertas, compras, difs, viajes, movs] = await Promise.all([
     datos.bodegaAlertas().catch(() => ({ bajoMinimo: [] })), datos.comprasResumen({ negocios: null }).catch(() => ({ semana: { facturas: 0, total: 0 } })),
-    Promise.all(s.negocios.map((n) => datos.cierres(n.id, { limite: 3 }).then((r) => r.items.map((c) => ({ ...c, negocio: n.nombre }))).catch(() => []))),
+    datos.diferenciasPendientes().catch(() => []), datos.viajes().catch(() => []), datos.movimientosRecientes({ limite: 6 }).catch(() => []),
   ]);
+  s.viaje = viajes[0] && viajes[0].fecha >= hoy ? viajes[0] : null;
   const decisiones = [];
   const porUbic = new Map();
   for (const a of alertas.bajoMinimo) porUbic.set(a.ubicacion, (porUbic.get(a.ubicacion) || 0) + 1);
   for (const [ub, n] of porUbic) decisiones.push({ letra: 'B', color: '#1fa971', titulo: `Reponer ${n} producto${n === 1 ? '' : 's'} de ${ub}`, detalle: 'Está bajo el mínimo', accion: 'ir-bodega', valor: 'alertas' });
-  for (const c of cierres.flat().filter((x) => estadoDiferencia(x.diferencia ?? 0).clave !== 'cuadra')) {
-    const d = c.diferencia ?? 0;
-    decisiones.push({ letra: 'C', color: '#b81622', titulo: 'Revisar una diferencia de caja', detalle: `${c.negocio} · ${fechaLarga(c.fecha)} · ${d < 0 ? 'faltaron' : 'sobraron'} ${colones(Math.abs(d))}`, accion: 'ir-cierres' });
+  for (const c of difs) {
+    const d = c.diferencia ?? 0, abierta = s.resolviendo === String(c.cajaId);
+    decisiones.push({ letra: 'C', color: '#b81622', titulo: 'Revisar una diferencia de caja', detalle: `${nombreNeg(c.negocioId)} · ${fechaLarga(c.fecha)} · ${d < 0 ? 'faltaron' : 'sobraron'} ${colones(Math.abs(d))}`, accion: 'dif-abrir', valor: String(c.cajaId),
+      extra: abierta ? `<div class="ini-resolver"><label>¿Qué pasó? <small>(opcional)</small><input id="d-nota" type="text" maxlength="300" autocomplete="off" value="${esc(s.notaDif)}" placeholder="Por ejemplo, se pagó un gas sin anotar"></label>
+        <div class="ini-fila-b"><button class="ini-link" data-accion="dif-cancelar">Cancelar</button><button class="ini-btn" data-accion="dif-resolver" data-valor="${esc(String(c.cajaId))}">Marcar como resuelta</button></div></div>` : '' });
   }
   const h = new Date().getHours();
-  return vistaInicio({ saludo: h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches', mensaje: mensajeDelDia().texto, negocios, decisiones, semana: compras.semana, viaje: s.viaje, viajeForm: s.viajeForm, hoy });
+  return vistaInicio({ saludo: h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches', mensaje: mensajeDelDia().texto, negocios, decisiones, semana: compras.semana, viaje: s.viaje, viajeForm: s.viajeForm, movimientos: movs.map((m) => ({ ...m, negocio: nombreNeg(m.negocioId) })), aviso: s.avisoEfectivo, hoy });
 }
 
 async function construirCompras(hoy) {
@@ -122,7 +125,19 @@ async function entrarConUsuario(u) {
   const guardado = leerLS('dixiapp.negocio', '');
   s.negocioId = s.negocios.some((n) => n.id === guardado) ? guardado : s.negocios[0].id;
   s.bodega = estadoBodega(); s.pestana = esAdmin() ? 'Inicio' : 'Caja'; s.fecha = null; s.pin = ''; s.pin1 = ''; s.errorPin = ''; s.form = null; s.cierre = null; s.aviso = ''; s.error = '';
-  suscribirCompras();
+  suscribirCompras(); suscribirEfectivo();
+}
+
+let cancelarEfectivo = null;
+async function suscribirEfectivo() {
+  if (cancelarEfectivo) { cancelarEfectivo(); cancelarEfectivo = null; }
+  try {
+    cancelarEfectivo = await datos.movimientosSuscribir(async (m) => {
+      const neg = s.negocios.find((n) => n.id === m.negocioId)?.nombre || '';
+      s.avisoEfectivo = `${m.tipo === 'entrada' ? 'Entró' : 'Salió'} efectivo en ${neg}: ${colones(m.monto)} (${m.motivo}).`;
+      if (s.usuario && s.pestana === 'Inicio' && !document.activeElement?.matches?.('input')) await pintar();
+    });
+  } catch { /* sin tiempo real: se ve al abrir el inicio */ }
 }
 
 let cancelarSuscripcion = null, temporizador = null;
@@ -188,20 +203,24 @@ raiz.addEventListener('click', async (ev) => {
     if (a === 'otra-cuenta') { await datos.cerrarSesion(); await evaluarAcceso(); return pintar(); }
     if (a === 'reintentar') { s.error = ''; return pintar(); }
     if (a === 'pestana') { s.pestana = v; s.aviso = ''; s.error = ''; s.cierre = null; s.corrigiendo = null; await pintar(); return void window.scrollTo(0, 0); }
-    if (a === 'salir') { await datos.cerrarSesion(); Object.assign(s, { usuario: null, form: null, aviso: '', pin: '' }); if (cancelarSuscripcion) { cancelarSuscripcion(); cancelarSuscripcion = null; } await evaluarAcceso(); return pintar(); }
+    if (a === 'salir') { await datos.cerrarSesion(); Object.assign(s, { usuario: null, form: null, aviso: '', pin: '' }); if (cancelarSuscripcion) { cancelarSuscripcion(); cancelarSuscripcion = null; } if (cancelarEfectivo) { cancelarEfectivo(); cancelarEfectivo = null; } await evaluarAcceso(); return pintar(); }
     if (a === 'bloquear') { await datos.bloquear(); await evaluarAcceso(); return pintar(); }
     if (a === 'negocio') { s.negocioId = v; escribirLS('dixiapp.negocio', v); Object.assign(s, { form: null, limite: 7, fecha: null, aviso: '', cierre: null, corrigiendo: null }); return pintar(); }
     if (a === 'tema') { s.tema = v; escribirLS('dixiapp.tema', v); aplicarTema(v); return pintar(); }
     if (a === 'restablecer') { await datos.restablecerPrueba(); s.aviso = ''; return pintar(); }
     if (a === 'mas-cierres') { s.limite += 7; return pintar(); }
     if (a === 'ir-bodega') { s.bodega.seccion = v; s.pestana = 'Bodega'; await pintar(); return void window.scrollTo(0, 0); }
+    if (a === 'dif-abrir') { s.resolviendo = v; s.notaDif = ''; return pintar(); }
+    if (a === 'dif-cancelar') { s.resolviendo = null; return pintar(); }
+    if (a === 'dif-resolver') { await datos.diferenciaResolver({ cajaId: /^\d+$/.test(v) ? Number(v) : v, nota: s.notaDif }); s.resolviendo = null; s.notaDif = ''; return pintar(); }
+    if (a === 'aviso-cerrar') { s.avisoEfectivo = ''; return pintar(); }
     if (a === 'ir-cierres') { s.pestana = 'Cierres'; await pintar(); return void window.scrollTo(0, 0); }
     if (a === 'viaje-editar') { s.viajeForm = { destino: s.viaje?.destino || '', fecha: s.viaje?.fecha || '', error: '' }; return pintar(); }
     if (a === 'viaje-cancelar') { s.viajeForm = null; return pintar(); }
     if (a === 'viaje-guardar') {
       const f = s.viajeForm; f.destino = f.destino.trim();
       if (!f.destino) f.error = 'Escribe a dónde quieres ir.'; else if (!f.fecha) f.error = 'Elige el día en que sales.'; else if (diasHasta(await datos.hoy(), f.fecha) < 0) f.error = 'Esa fecha ya pasó. Elige una que esté por llegar.'; else f.error = '';
-      if (!f.error) { s.viaje = { destino: f.destino, fecha: f.fecha }; escribirLS('dixiapp.viaje', JSON.stringify(s.viaje)); s.viajeForm = null; }
+      if (!f.error) { await datos.viajeAgregar({ destino: f.destino, fecha: f.fecha }); s.viajeForm = null; }
       return pintar();
     }
     // Caja
@@ -234,6 +253,7 @@ raiz.addEventListener('input', (ev) => {
     if (id === 'a-fondo') s.fondo = ev.target.value;
     if (id === 'c-contado') actualizarDif();
   }
+  if (id === 'd-nota') s.notaDif = ev.target.value;
   if (id === 'v-destino' && s.viajeForm) s.viajeForm.destino = ev.target.value;
   if (id === 'v-fecha' && s.viajeForm) s.viajeForm.fecha = ev.target.value;
   if (id === 'f-motivo') s.form.motivo = ev.target.value;

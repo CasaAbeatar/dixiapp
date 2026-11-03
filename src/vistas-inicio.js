@@ -29,7 +29,7 @@ function tarjetaNegocio(n, cls) {
 function decision(d) {
   return `<div class="ini-dec"><span class="ini-ic" style="background:${d.color}">${esc(d.letra)}</span>
     <div class="ini-t"><b>${esc(d.titulo)}</b><small>${esc(d.detalle)}</small></div>
-    <button class="ini-btn" data-accion="${esc(d.accion)}" ${d.valor ? `data-valor="${esc(d.valor)}"` : ''}>Decidir</button></div>`;
+    ${d.extra ? '' : `<button class="ini-btn" data-accion="${esc(d.accion)}" ${d.valor ? `data-valor="${esc(d.valor)}"` : ''}>Decidir</button>`}${d.extra || ''}</div>`;
 }
 
 function bloqueViaje(viaje, hoy, form) {
@@ -50,7 +50,7 @@ function bloqueViaje(viaje, hoy, form) {
   return `<div class="ini-f"><div class="ini-dt viaje"><b>✈</b><i>viaje</i></div><div class="ini-ft"><b>Tu próximo viaje</b><small>¿A dónde te gustaría ir?</small></div><button class="ini-btn" data-accion="viaje-editar">Ponerle fecha</button></div>`;
 }
 
-export function vistaInicio({ saludo, mensaje, negocios, decisiones, semana, viaje, viajeForm, hoy }) {
+export function vistaInicio({ saludo, mensaje, negocios, decisiones, semana, viaje, viajeForm, movimientos, aviso, hoy }) {
   const total = negocios.reduce((a, n) => a + (n.caja?.esperado ?? 0), 0);
   const kpis = negocios.map((n, i) => tarjetaNegocio(n, i === 0 ? 'k1' : 'k2')).join('')
     + `<div class="ini-k k3"><small>Los dos negocios · efectivo esperado</small><div class="ini-n">${colones(total)}</div><div class="ini-d">Suma de ambas cajas</div></div>`;
@@ -59,12 +59,15 @@ export function vistaInicio({ saludo, mensaje, negocios, decisiones, semana, via
   return `<section class="ini">
     <h2 class="ini-h">${esc(saludo)}, Dixia</h2>
     <p class="ini-msg">${esc(mensaje)}</p>
+    ${aviso ? `<div class="ini-aviso" role="status"><span>${esc(aviso)}</span><button class="ini-link" data-accion="aviso-cerrar">Entendido</button></div>` : ''}
     <div class="ini-kpis">${kpis}</div>
     <div class="ini-grid">
       <div class="ini-c"><h3>Decisiones que esperan por ti <span>${decisiones.length}</span></h3>
         ${decisiones.map(decision).join('') || '<p class="ini-vacio">Por ahora no hay nada esperando tu decisión.</p>'}</div>
       <div>
         <div class="ini-ia"><b>Resumen de la semana</b><span>${semana.facturas ? `Han llegado ${semana.facturas} facturas de proveedores por ${colones(semana.total)} (con IVA).` : 'Esta semana todavía no han llegado facturas de proveedores.'}</span></div>
+        <div class="ini-c" style="margin-bottom:14px"><h3>Efectivo de hoy <span>entradas y salidas</span></h3>
+          ${movimientos.map((m) => `<div class="ini-f"><span class="ini-mov ${m.tipo === 'entrada' ? 'mov-e' : 'mov-s'}">${m.tipo === 'entrada' ? '+' : '−'}</span><div class="ini-ft"><b>${esc(m.motivo)}</b><small>${esc(m.negocio)} · ${esc(m.hora || '')} · ${esc(m.registradoPor)}</small></div><b>${m.tipo === 'entrada' ? '+' : '-'}${colones(m.monto)}</b></div>`).join('') || '<p class="ini-vacio">Todavía no hay entradas ni salidas de efectivo hoy.</p>'}</div>
         <div class="ini-c"><h3>Tus próximas fechas</h3>
           ${fecha(cumple, 'Tu cumpleaños', 'Te lo mereces')}${fecha(soda, 'Aniversario de Soda La Bomba', 'Lo construiste tú')}
           ${bloqueViaje(viaje, hoy, viajeForm)}</div>
