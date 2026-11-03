@@ -237,7 +237,7 @@ input[type=date] { width: 100%; min-height: 52px; padding: 10px 14px; background
 .lema::before { content: ""; position: absolute; inset: -6px -18px; z-index: -1; background: radial-gradient(closest-side, rgba(244,224,176,.88) 55%, rgba(244,224,176,0) 100%); filter: blur(4px); }
 .nombre-texto em { font-style: normal; color: #b04f0a; }
 /* Entrada personal de Dixia: foto completa y panel de vidrio */
-.entrada { position: relative; min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: flex-end; padding: max(20px, env(safe-area-inset-top)) clamp(16px, 7vw, 120px) max(20px, env(safe-area-inset-bottom)); background: #7a3b12 url(fotos/entrada.jpg) 30% 46% / cover no-repeat; }
+.entrada:not(.insignia) { position: relative; min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: flex-end; padding: max(20px, env(safe-area-inset-top)) clamp(16px, 7vw, 120px) max(20px, env(safe-area-inset-bottom)); background: #7a3b12 url(fotos/entrada.jpg) 30% 46% / cover no-repeat; }
 .entrada-panel { width: 100%; max-width: 300px; padding: 22px 22px 20px; border-radius: 22px; background: rgba(70,30,8,.30); border: .5px solid rgba(255,255,255,.6); box-shadow: 0 18px 50px rgba(60,25,5,.25); -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2); color: #fff; text-shadow: 0 1px 8px rgba(40,15,0,.45); }
 .entrada-panel .marca { color: rgba(255,255,255,.9); }
 .entrada-panel h1 { margin: 8px 0 16px; font-size: 25px; line-height: 1.1; letter-spacing: -.01em; font-weight: 400; text-wrap: balance; }
@@ -249,7 +249,7 @@ input[type=date] { width: 100%; min-height: 52px; padding: 10px 14px; background
 .entrada-error { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.9); color: #9b1c20; font-size: 16px; text-shadow: none; }
 .entrada-boton { width: 100%; min-height: 48px; margin-top: 18px; border: 0; border-radius: 14px; background: #fff; color: #7a2e0b; font-size: 17px; font-weight: 500; letter-spacing: .02em; text-shadow: none; }
 .entrada-boton:disabled { background: rgba(255,255,255,.45); color: rgba(60,25,5,.6); }
-@media (max-width: 700px) { .entrada { align-items: flex-end; justify-content: center; background-position: 6% 30%; padding: 16px; } .entrada-panel { max-width: 340px; padding: 18px 20px 18px; } .entrada-panel h1 { font-size: 23px; } .entrada-sub { margin-bottom: 14px; font-size: 19px; } }
+@media (max-width: 700px) { .entrada:not(.insignia) { align-items: flex-end; justify-content: center; background-position: 6% 30%; padding: 16px; } .entrada-panel { max-width: 340px; padding: 18px 20px 18px; } .entrada-panel h1 { font-size: 23px; } .entrada-sub { margin-bottom: 14px; font-size: 19px; } }
 
 /* ---------- Inicio ---------- */
 .ini-h { font-size: 38px; font-weight: 600; letter-spacing: -.02em; line-height: 1.05; margin: 6px 0 6px; }
