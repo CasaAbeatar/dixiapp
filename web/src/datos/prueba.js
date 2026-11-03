@@ -139,6 +139,29 @@ function ventasDelDia(negocio, fecha, hoyTexto, ahoraFecha) {
   if (fecha === hoyTexto) total = Math.round(total * Math.min(1, Math.max(0.08, (ahoraFecha.getHours() - 8) / 12)));
   return total;
 }
+
+// Menu ficticio para "lo mas y lo menos vendido": cada producto lleva su parte de las ventas del dia (estable; los de parte minima a veces no se venden)
+const MENU_PRUEBA = {
+  soda: [['Casado de pollo', 4000, 22], ['Casado de chuleta', 4000, 15], ['Gallo pinto con huevo', 2500, 12], ['Hamburguesa clásica', 2775, 11], ['Slice de pizza', 1600, 14], ['Refresco natural', 1000, 9], ['Sopa de mariscos grande', 5800, 4], ['Arroz con leche', 1300, 2], ['Tacos especial', 3975, 3], ['Plato para niños hamburguesa', 1000, 1.5], ['Pastel de tres leches', 2200, 0.6], ['Olla de carne mediana', 4200, 0.4]],
+  pollos: [['Pechuga y ala', 2300, 24], ['Pollo frito, combo familiar', 9800, 12], ['Papas fritas grandes', 2200, 16], ['Papas fritas pequeñas', 1200, 9], ['Hamburguesa de pollo', 2775, 10], ['Refresco natural', 1000, 9], ['Tropical té negro sabores 500 mL', 1000, 12], ['Balde de arroz con pollo', 28500, 1.2], ['Quesoburguesa', 2600, 3], ['Ensalada de repollo', 900, 0.8], ['Milkshake Oreo', 2975, 0.5], ['Caldosa de pescado', 1500, 0.3]],
+};
+function topDelRango(negocios, desde, hasta, hoyTexto, ahoraFecha) {
+  const acum = new Map(); let menuTotal = new Set();
+  for (const n of negocios) {
+    const total = MENU_PRUEBA[n].reduce((a, p) => a + p[2], 0);
+    for (const p of MENU_PRUEBA[n]) menuTotal.add(p[0]);
+    for (let d = desde; d <= hasta; d = sumarDias(d, 1)) {
+      const dia = ventasDelDia(n, d, hoyTexto, ahoraFecha);
+      for (const [nombre, precio, parte] of MENU_PRUEBA[n]) {
+        const u = Math.floor((dia * parte) / total / precio);
+        if (u > 0) { const a = acum.get(nombre) || { nombre, unidades: 0, total: 0 }; a.unidades += u; a.total += u * precio; acum.set(nombre, a); }
+      }
+    }
+  }
+  return { vendidos: [...acum.values()], menuTotal: menuTotal.size };
+}
+// Reparto del dia por hora (almuerzo y tarde fuertes) para el grafico de horas fuertes
+const PESO_HORA = { 6: 1, 7: 3, 8: 4, 9: 4, 10: 5, 11: 12, 12: 18, 13: 14, 14: 8, 15: 5, 16: 6, 17: 9, 18: 12, 19: 10, 20: 6, 21: 3 };
 function bloqueVentas(total, estado, desde) {
   const iva = Math.round((total * 13) / 113);
   return { total, iva, neto: total - iva, docs: Math.round(total / 3800), estado, desde };
@@ -334,6 +357,29 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
         grupos.set(k, g);
       }
       return [...grupos.values()].map((g) => ({ ...g, neto: Math.round(g.neto), iva: Math.round(g.iva), total: Math.round(g.total) })).sort((a, b) => a.clave.localeCompare(b.clave));
+    },
+    async ventasTop({ negocios, desde, hasta, limite = 5 }) {
+      const u = exigirAdmin(); const h = hoy();
+      const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
+      const { vendidos, menuTotal } = topDelRango(ids, desde, hasta, h, ahora());
+      const dinero = vendidos.map((p) => ({ ...p, total: Math.round(p.total) }));
+      const mas = dinero.slice().sort((a, b) => b.total - a.total || b.unidades - a.unidades || a.nombre.localeCompare(b.nombre)).slice(0, limite);
+      const nombresMas = new Set(mas.map((p) => p.nombre));
+      const menos = dinero.filter((p) => !nombresMas.has(p.nombre)).sort((a, b) => a.total - b.total || a.unidades - b.unidades || b.nombre.localeCompare(a.nombre)).slice(0, limite);
+      return { desde, hasta, mas, menos, vendidos: dinero.length, menuTotal, sinVentas: menuTotal - dinero.length };
+    },
+    async ventasPorHora({ negocios, fecha }) {
+      const u = exigirAdmin(); const h = hoy(); const hora = ahora().getHours();
+      const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
+      const suma = (d) => ids.reduce((a, n) => a + ventasDelDia(n, d, '9999-12-31', ahora()), 0);
+      const previos = [7, 14, 21, 28].map((k) => sumarDias(fecha, -k)).filter((d) => d < h || fecha < h);
+      const peso = (x) => PESO_HORA[x] || 0, sumaPesos = Object.values(PESO_HORA).reduce((a, b) => a + b, 0);
+      const promedioDia = previos.length ? previos.reduce((a, d) => a + suma(d), 0) / previos.length : null;
+      const horas = Array.from({ length: 24 }, (_, x) => ({ hora: x, docs: 0,
+        hoy: fecha > h || (fecha === h && x > hora) ? 0 : Math.round((suma(fecha) * peso(x)) / sumaPesos / 100) * 100,
+        promedio: promedioDia == null ? null : Math.round((promedioDia * peso(x)) / sumaPesos / 100) * 100 }));
+      horas.forEach((x) => { x.docs = Math.round(x.hoy / 3800); });
+      return { fecha, semanas: previos.length, horas };
     },
     // Avisos (simulados: en el modo de prueba no se manda nada al telefono)
     async avisosEstado() { exigirAdmin(); const e = leer(); return { motivo: '', activo: !!e.avisos, prefs: e.avisos || {} }; },

@@ -280,6 +280,17 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
       const r = ok(await db().rpc('ventas_agrupadas', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: desde, p_hasta: hasta, p_por: por }));
       return (r || []).map((f) => ({ clave: f.clave, etiqueta: f.clave, facturas: Number(f.documentos), neto: Number(f.sin_iva), iva: Number(f.iva), total: Number(f.con_iva) }));
     },
+    async ventasTop({ negocios, desde, hasta, limite = 5 }) {
+      await exigirAdmin();
+      const r = ok(await db().rpc('ventas_top', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: desde, p_hasta: hasta, p_limite: limite }));
+      const lista = (l) => (l || []).map((p) => ({ nombre: p.nombre, unidades: Number(p.unidades), total: num(p.con_iva) }));
+      return { desde: r.desde, hasta: r.hasta, mas: lista(r.mas), menos: lista(r.menos), vendidos: Number(r.vendidos || 0), menuTotal: Number(r.menu_total || 0), sinVentas: r.sin_ventas == null ? null : Number(r.sin_ventas) };
+    },
+    async ventasPorHora({ negocios, fecha }) {
+      await exigirAdmin();
+      const r = ok(await db().rpc('ventas_por_hora', { p_negocios: negocios && negocios.length ? negocios : null, p_fecha: fecha })) || [];
+      return { fecha, semanas: r.length ? Number(r[0].semanas || 0) : 0, horas: r.map((h) => ({ hora: Number(h.hora), hoy: num(h.hoy), promedio: h.promedio == null ? null : num(h.promedio), docs: Number(h.docs || 0) })) };
+    },
     // ---------- Avisos en el telefono ----------
     async avisosEstado() {
       await exigirAdmin();

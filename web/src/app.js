@@ -109,12 +109,14 @@ async function construirVentas(hoy) {
   const negs = s.filtroVentas.neg === 'ambos' ? null : [s.filtroVentas.neg];
   const rango = s.ventasPor === 'mes' ? { desde: sumarMeses(hoy, -11), hasta: hoy } : rangoPorDefecto(hoy, s.ventasPor);
   const rangoMes = { desde: sumarMeses(hoy, -11), hasta: hoy };
-  const [enVivo, serie, meses] = await Promise.all([
+  const topPor = s.ventasTop || 'hoy', rangoTop = { desde: topPor === 'hoy' ? hoy : topPor === 'semana' ? lunesDe(hoy) : inicioMes(hoy), hasta: hoy };
+  const [enVivo, serie, meses, top, horasDia] = await Promise.all([
     datos.ventasEnVivo({ negocios: negs }), datos.ventasAgrupadas({ negocios: negs, ...rango, por: s.ventasPor }), datos.ventasAgrupadas({ negocios: negs, ...rangoMes, por: 'mes' }),
+    datos.ventasTop({ negocios: negs, ...rangoTop, limite: 5 }).catch(() => null), datos.ventasPorHora({ negocios: negs, fecha: hoy }).catch(() => null),
   ]);
   const ahoraTexto = new Date().toLocaleTimeString('es-CR', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
   return vistaVentas({ negociosPermitidos: s.negocios, filtro: s.filtroVentas, vivo: s.vivoVentas, en_vivo: enVivo, por: s.ventasPor,
-    grafico: rellenarPeriodos(serie, s.ventasPor, rango.desde, rango.hasta), meses: rellenarPeriodos(meses, 'mes', rangoMes.desde, rangoMes.hasta), error: s.error, ahoraTexto });
+    grafico: rellenarPeriodos(serie, s.ventasPor, rango.desde, rango.hasta), meses: rellenarPeriodos(meses, 'mes', rangoMes.desde, rangoMes.hasta), error: s.error, ahoraTexto, top, topPor, horasDia, hoy });
 }
 
 async function construirCompras(hoy) {
@@ -288,6 +290,7 @@ raiz.addEventListener('click', async (ev) => {
     // Ventas
     if (a === 'ventas-negocio') { s.filtroVentas.neg = v; return pintar(); }
     if (a === 'ventas-por') { s.ventasPor = v; return pintar(); }
+    if (a === 'ventas-top') { s.ventasTop = v; return pintar(); }
     // Compras
     if (a === 'filtro-negocio') { s.filtro.neg = v; s.abierta = null; return pintar(); }
     if (a === 'elegir-prov') { s.filtro.proveedor = v; s.filtro.busca = ''; s.abierta = null; return pintar(); }
@@ -393,7 +396,7 @@ async function cerrar(confirmar) {
 
 async function iniciar() {
   try { await evaluarAcceso(); } catch (e) { s.errorPin = e.message; }
-  const destino = { '#ventas': 'Ventas', '#cierres': 'Cierres' }[location.hash]; // al tocar un aviso se abre la pantalla que corresponde
+  const destino = { '#ventas': 'Ventas', '#cierres': 'Cierres', '#bodega': 'Bodega', '#compras': 'Compras' }[location.hash]; // al tocar un aviso se abre la pantalla que corresponde
   if (destino && s.usuario && esAdmin()) s.pestana = destino;
   await pintar();
 }

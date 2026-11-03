@@ -340,3 +340,34 @@ test('compras por proveedor: nombre comercial, orden por nombre, clasificacion y
   const porProv = conRubro.reduce((a, f) => a + f.total, 0);
   assert.ok(Math.abs(total - porProv) < 1, 'por mes y por proveedor suman lo mismo para la misma clasificacion');
 });
+
+test('ventas detalle: lo mas y lo menos vendido (sin repetir, ordenado) y horas fuertes del dia (modo de prueba)', async () => {
+  const d = await admin();
+  const top = await d.ventasTop({ desde: '2026-11-01', hasta: '2026-11-02', limite: 5 });
+  assert.equal(top.mas.length, 5); assert.ok(top.menos.length > 0 && top.menos.length <= 5);
+  for (let i = 1; i < top.mas.length; i++) assert.ok(top.mas[i - 1].total >= top.mas[i].total, 'mas vendidos de mayor a menor');
+  for (let i = 1; i < top.menos.length; i++) assert.ok(top.menos[i - 1].total <= top.menos[i].total, 'menos vendidos de menor a mayor');
+  assert.equal(top.mas.filter((p) => top.menos.some((q) => q.nombre === p.nombre)).length, 0, 'ningun producto en las dos listas');
+  assert.ok(top.mas[top.mas.length - 1].total >= top.menos[top.menos.length - 1].total);
+  assert.equal(top.vendidos + top.sinVentas, top.menuTotal);
+  const soda = await d.ventasTop({ negocios: ['soda'], desde: '2026-11-01', hasta: '2026-11-02' });
+  assert.ok(soda.menuTotal <= top.menuTotal);
+  const h = await d.ventasPorHora({ fecha: '2026-11-02' });
+  assert.equal(h.horas.length, 24); assert.deepEqual(h.horas.map((x) => x.hora), [...Array(24).keys()]);
+  assert.ok(h.horas.some((x) => x.hoy > 0) && h.semanas > 0 && h.horas.every((x) => x.promedio !== null));
+  const diaTotal = (await d.ventasAgrupadas({ desde: '2026-11-02', hasta: '2026-11-02', por: 'dia' }))[0].total;
+  assert.ok(h.horas.reduce((a, x) => a + x.hoy, 0) <= diaTotal * 1.1 + 1000, 'las horas no pasan de lo del dia');
+  assert.ok(h.horas.slice(23).every((x) => x.hoy === 0), 'las horas que no han llegado van vacias');
+  const c = crearDatosPrueba({ almacen: mem(), ahora: () => new Date(2026, 10, 2, 15, 0) });
+  await c.iniciarSesion({ pin: '4321' });
+  await assert.rejects(() => c.ventasTop({ desde: '2026-11-01', hasta: '2026-11-02' }), /No autorizado/);
+  await assert.rejects(() => c.ventasPorHora({ fecha: '2026-11-02' }), /No autorizado/);
+});
+
+test('avisos del telefono: la pantalla ofrece el interruptor de cambio de precio y de productos por reponer', async () => {
+  const { TIPOS_AVISO } = await import('../web/src/vistas.js');
+  const claves = TIPOS_AVISO.map((t) => t[0]);
+  assert.ok(claves.includes('cambio_precio') && claves.includes('por_reponer'));
+  assert.equal(new Set(claves).size, claves.length);
+  for (const t of TIPOS_AVISO) assert.ok(t[1] && t[2], `texto completo para ${t[0]}`);
+});

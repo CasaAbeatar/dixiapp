@@ -177,11 +177,13 @@ const MOTIVOS_AVISOS = {
   sin_soporte: 'Este navegador no permite recibir avisos. En Android sirve Chrome; en iPhone, Safari con la app guardada en la pantalla de inicio.',
   bloqueado: 'Los avisos están bloqueados en los ajustes de este teléfono para Dixiapp. Se activan desde los ajustes de notificaciones del teléfono.',
 };
-const TIPOS_AVISO = [
+export const TIPOS_AVISO = [
   ['cierre_turno', 'Cierre de turno', 'Quién cerró, cuánto se vendió y cómo quedó el efectivo.'],
   ['diferencia_caja', 'Diferencia de caja', 'Solo cuando al cerrar sobró o faltó efectivo.'],
   ['efectivo', 'Entradas y salidas de efectivo', 'Monto, motivo y quién lo registró.'],
   ['resumen_diario', 'Resumen de ayer, 8:00 a. m.', 'Ventas de ayer por local frente al mismo día de la semana pasada.'],
+  ['cambio_precio', 'Cambio de precio de productos', 'Una vez al día, solo si algún producto que compra cambió de precio.'],
+  ['por_reponer', 'Productos por reponer', 'Una vez al día, solo si hay productos bajo el mínimo.'],
 ];
 export const MINIMOS_EFECTIVO = [0, 10000, 25000, 50000];
 const aviso = (b, t) => `<div class="fila"><span><b>${t[1]}</b><br><span class="etq">${t[2]}</span></span>${boton('aviso-pref', (b.prefs[t[0]] ?? true) ? 'Activado' : 'Apagado', (b.prefs[t[0]] ?? true) ? 'bloque' : 'bloque peligro', `data-valor="${t[0]}" style="min-width:110px"`)}</div>`;
