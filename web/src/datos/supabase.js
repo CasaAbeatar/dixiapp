@@ -45,7 +45,7 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
   const fechaCR = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: ZONA });
   const horaCR = (iso) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { timeZone: ZONA, hour: '2-digit', minute: '2-digit' }) : null);
   const hoy = () => fechaCR(ahora());
-  let desbloqueado = false, usuarioCache = null;
+  let desbloqueado = false, usuarioCache = null, negociosPrecargados = null;
 
   const sesion = async () => { const { data } = await cliente.auth.getSession(); return data?.session || null; };
   const claveLS = (uid) => `dixiapp.pin.${uid}`;
@@ -53,9 +53,10 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
 
   async function cargarUsuario(uid) {
     if (usuarioCache?.id === uid) return usuarioCache;
-    const p = ok(await db().from('perfiles').select('id,nombre,rol,activo').eq('id', uid).maybeSingle());
-    if (!p || !p.activo) return null;
-    const ns = ok(await db().from('perfil_negocios').select('negocio_id').eq('perfil_id', uid));
+    // Todo en paralelo: el perfil, sus negocios y la lista de negocios (se guarda para la primera pantalla)
+    const [rp, rn, rneg] = await Promise.all([db().from('perfiles').select('id,nombre,rol,activo').eq('id', uid).maybeSingle(), db().from('perfil_negocios').select('negocio_id').eq('perfil_id', uid), db().from('negocios').select('id,nombre').order('nombre', { ascending: false })]);
+    const p = ok(rp); if (!p || !p.activo) return null;
+    const ns = ok(rn); if (!rneg.error) negociosPrecargados = rneg.data;
     usuarioCache = { id: p.id, nombre: p.nombre, rol: p.rol, negocios: ns.map((n) => n.negocio_id) };
     return usuarioCache;
   }
@@ -154,7 +155,7 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
     async sesionActual() { if ((await api.estadoAcceso()) !== 'abierta') return null; const s = await sesion(); return cargarUsuario(s.user.id); },
     async cerrarSesion() { desbloqueado = false; usuarioCache = null; await cliente.auth.signOut(modoAcceso === 'pin' ? { scope: 'local' } : undefined); },
 
-    async negocios() { await exigir(); return ok(await db().from('negocios').select('id,nombre').order('nombre', { ascending: false })); },
+    async negocios() { await exigir(); if (negociosPrecargados) { const n = negociosPrecargados; negociosPrecargados = null; return n; } return ok(await db().from('negocios').select('id,nombre').order('nombre', { ascending: false })); },
     async horarios() {
       await exigir();
       const r = ok(await db().from('horarios').select('negocio_id,servicio,abre,cierra,abierto_24h').order('negocio_id').order('servicio'));
