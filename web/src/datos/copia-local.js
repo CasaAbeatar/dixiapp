@@ -44,6 +44,11 @@ export function conCopiaLocal(real, { almacen = globalThis.localStorage, enLinea
   };
   api.cerrarSesion = async () => { borrarTodo(); poner(false, null); return real.cerrarSesion(); };
   api.bloquear = async () => { borrarTodo(); poner(false, null); return real.bloquear(); };
+  // El dia de "hoy" sin internet es el de la ultima conexion: asi las ventanas (hoy, semana, mes) coinciden con las copias guardadas
+  api.hoy = async () => {
+    if (!enLinea()) { const c = leer('dia'); if (c) return c.v; return real.hoy(); }
+    const h = await real.hoy(); guardar('dia', h); return h;
+  };
   api.copia = estado;
   return api;
 }

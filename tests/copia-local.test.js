@@ -51,3 +51,27 @@ test('usuario guardado abre sin internet y cerrar sesion borra todo', async () =
   assert.equal(almacen._m.size, 0);
   assert.equal(await d.estadoAcceso(), 'sin_sesion');
 });
+
+import { precargarTodo } from '../web/src/datos/precarga.js';
+test('sin internet, "hoy" es el dia de la ultima conexion', async () => {
+  let linea = true; const almacen = almacenFalso();
+  const real = { hoy: async () => '2026-11-03', negocios: async () => [] };
+  const d = conCopiaLocal(real, { almacen, enLinea: () => linea });
+  assert.equal(await d.hoy(), '2026-11-03'); linea = false;
+  real.hoy = async () => '2026-11-05';
+  assert.equal(await d.hoy(), '2026-11-03');
+});
+test('la precarga baja todas las variantes y todo el historial de cierres', async () => {
+  const llamadas = []; let pag = 0;
+  const reg = (n) => async (a) => { llamadas.push(n); return n === 'cierresTurnos' ? { turnos: [], hayMas: ++pag % 4 !== 0 } : []; };
+  const nombres = ['ventasEnVivo', 'ventasAgrupadas', 'ventasTop', 'ventasPorHora', 'comprasProveedores', 'comprasResumen', 'comprasUltimas', 'comprasAgrupadas', 'cierresTurnos', 'diferenciasPendientes', 'viajes', 'movimientosRecientes', 'bodegaUbicaciones', 'bodegaAlertas', 'bodegaPorRecibir', 'bodegaNotas', 'bodegaRecibidas', 'bodegaArticulos', 'bodegaSugerenciaMinimos', 'bodegaMovimientos', 'bodegaExistencias'];
+  const datos = Object.fromEntries(nombres.map((n) => [n, reg(n)]));
+  datos.negocios = async () => [{ id: 'a' }, { id: 'b' }];
+  datos.bodegaUbicaciones = async () => [{ id: 'u1' }];
+  const r = await precargarTodo(datos, { hoy: '2026-11-03', almacen: almacenFalso(), forzar: true });
+  assert.equal(r.hecho, true); assert.equal(r.fallos, 0);
+  assert.equal(llamadas.filter((x) => x === 'ventasAgrupadas').length, 3 * 4);
+  assert.equal(llamadas.filter((x) => x === 'cierresTurnos').length, 3 * 4, 'pagina de 30 en 30 hasta que no hay mas');
+  const otra = await precargarTodo(datos, { hoy: '2026-11-03', almacen: almacenFalso(), enLinea: () => false });
+  assert.equal(otra.motivo, 'sin_internet');
+});
