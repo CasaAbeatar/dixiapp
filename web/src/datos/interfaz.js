@@ -68,6 +68,13 @@ export const METODOS = [
   'bodegaNotas',          // ({estado}) => [{clave, tipo, proveedor, fecha, empresa, total, estado, lineas:[{linea, descripcion, cantidad, unidad, articuloId, articulo, factor}]}]
   'bodegaNotaDevolver',   // ({clave, ubicacion, items:[{articuloId, cantidad}], motivo}) => {items}   (salida por devolucion ligada a la nota de credito)
   'bodegaNotaIgnorar',    // ({clave, motivo}) => void   («no afecta el inventario»)
+  // Inicio de Dixia
+  'viajes',               // () => [{id, destino, fecha, creadoPor, creadoEn}] (el mas reciente primero)
+  'viajeAgregar',         // ({destino, fecha}) => true   (queda en historial; el aviso a admin@ lo envia un proceso aparte)
+  'diferenciasPendientes',// () => [{cajaId, negocioId, fecha, diferencia}]  cierres con diferencia aun sin resolver [administrador]
+  'diferenciaResolver',   // ({cajaId, nota}) => true     [administrador]
+  'movimientosRecientes', // ({limite}) => Movimiento[] de hoy en todos los negocios del usuario, el mas reciente primero
+  'movimientosSuscribir', // (callback(Movimiento)) => funcion para cancelar (tiempo real)
   'restablecerPrueba',    // () => void (solo implementacion de prueba)
 ];
 
