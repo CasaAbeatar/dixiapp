@@ -339,3 +339,6 @@ body { background:
 .lin-d { grid-column: 1 / -1; font-weight: 600; }
 .lin-c { color: var(--suave); font-size: 14px; }
 .lin-t { text-align: right; }
+.busca-prov { margin: 0 0 12px; }
+.busca-prov input { width: 100%; box-sizing: border-box; min-height: 48px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--linea-fuerte); background: var(--superficie); color: var(--texto); font: inherit; font-size: 16px; }
+.busca-res { margin-top: 8px; background: var(--superficie); border: 1px solid var(--linea); border-radius: 14px; padding: 4px 12px; }
