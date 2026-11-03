@@ -382,4 +382,9 @@ body { background:
 .tn-sub { margin: 14px 0 0; font-size: 14px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--suave); }
 .tn-movs { margin-top: 12px; border-top: 1px solid var(--linea-fuerte); padding-top: 8px; }
 .tn-dia .cierre-cab h3 { text-transform: capitalize; }
-.tn-movs .fila b, .tn-detalle .fila b { white-space: nowrap; }
+.tn-movs .fila b.num, .tn-detalle .fila b.num { white-space: nowrap; }
+.tn-detalle .fila b, .tn-movs .fila b { min-width: 0; overflow-wrap: anywhere; text-align: right; }
+.tn-detalle .fila .etq { flex: 0 1 auto; min-width: 0; }
+.tn .tn-detalle, .tn-lista > li { min-width: 0; max-width: 100%; }
+
+.tn-detalle .fila.texto b.num { white-space: normal; font-variant-numeric: normal; }

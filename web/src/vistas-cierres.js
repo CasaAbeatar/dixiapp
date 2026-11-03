@@ -21,13 +21,13 @@ function movimientos(titulo, lista, signo) {
 function detalle(t, nombre, hoy) {
   const otroDia = t.abiertoDia !== t.dia;
   if (t.estado !== 'cerrado') return `<div class="tn-detalle"><p class="etq" style="margin:0">Este turno sigue abierto. Las cifras aparecen cuando la cajera lo cierre.</p>
-    ${filaDetalle('Empresa', esc(nombre))}${filaDetalle('Abrió', `${esc(t.abiertoPor)}, ${otroDia ? esc(fechaLarga(t.abiertoDia)) + ' ' : ''}${horaLegible(t.abiertoHora)}`)}</div>`;
+    ${filaDetalle('Empresa', esc(nombre), 'texto')}${filaDetalle('Abrió', `${esc(t.abiertoPor)}, ${otroDia ? esc(fechaLarga(t.abiertoDia)) + ' ' : ''}${horaLegible(t.abiertoHora)}`, 'texto')}</div>`;
   const ajuste = Math.round((t.ventasNetas - t.totalVentas) * 100) / 100;
   const medios = MEDIOS.filter(([k]) => k !== 'otros' || t.ventas.otros).map(([k, n]) => filaDetalle(n, colones(t.ventas[k])));
   return `<div class="tn-detalle">
-    ${filaDetalle('Empresa', esc(nombre))}
-    ${filaDetalle('Abrió', `${esc(t.abiertoPor)}, ${otroDia ? esc(fechaLarga(t.abiertoDia)) + ' ' : ''}${horaLegible(t.abiertoHora)}`)}
-    ${filaDetalle('Cerró', `${esc(t.cerradoPor)}, ${horaLegible(t.cerradoHora)}`)}
+    ${filaDetalle('Empresa', esc(nombre), 'texto')}
+    ${filaDetalle('Abrió', `${esc(t.abiertoPor)}, ${otroDia ? esc(fechaLarga(t.abiertoDia)) + ' ' : ''}${horaLegible(t.abiertoHora)}`, 'texto')}
+    ${filaDetalle('Cerró', `${esc(t.cerradoPor)}, ${horaLegible(t.cerradoHora)}`, 'texto')}
     <h4 class="tn-sub">Ventas por medio de pago</h4>
     ${medios.join('')}
     ${filaDetalle('Total de ventas', colones(t.totalVentas), 'total')}
