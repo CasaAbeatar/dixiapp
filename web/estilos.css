@@ -342,3 +342,10 @@ body { background:
 .busca-prov { margin: 0 0 12px; }
 .busca-prov input { width: 100%; box-sizing: border-box; min-height: 48px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--linea-fuerte); background: var(--superficie); color: var(--texto); font: inherit; font-size: 16px; }
 .busca-res { margin-top: 8px; background: var(--superficie); border: 1px solid var(--linea); border-radius: 14px; padding: 4px 12px; }
+
+/* Ventas en vivo */
+.tabla-desliza { overflow-x: auto; }
+.tabla tr.total th, .tabla tr.total td { font-weight: 700; border-bottom: 0; }
+.tabla tbody th { text-align: left; font-weight: 500; color: var(--tinta, inherit); font-size: 16px; padding: 11px 8px 11px 0; border-bottom: 1px solid var(--linea); }
+.turno .fila b { text-align: right; }
+.tabla-ancha { min-width: 420px; } .tabla-ancha th, .tabla-ancha td { padding-left: 14px; } .tabla-ancha th:first-child, .tabla-ancha td:first-child { padding-left: 0; }

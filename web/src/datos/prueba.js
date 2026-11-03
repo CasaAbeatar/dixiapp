@@ -2,9 +2,9 @@
 // Cumple el mismo contrato que supabase.js (ver interfaz.js), incluida la regla de informacion ciega.
 import { validarImplementacion } from './interfaz.js';
 import { efectivoEsperado, totalesMovimientos } from './calculos.js';
-import { aTexto, horaTexto, sumarDias, diasDeLaSemana } from './fechas.js';
+import { aTexto, horaTexto, sumarDias, diasDeLaSemana, deTexto, lunesDe } from './fechas.js';
 import { crearBodegaPrueba } from './prueba-bodega.js';
-import { agruparCompras, resumenDesdeDias, desdeResumen } from './compras-calc.js';
+import { agruparCompras, resumenDesdeDias, desdeResumen, inicioMes, inicioPeriodo } from './compras-calc.js';
 
 const CLAVE = 'dixiapp.prueba.v2';
 const CLAVE_SESION = 'dixiapp.sesion.v2';
@@ -128,6 +128,24 @@ function almacenMemoria() {
 function almacenPorDefecto() {
   try { if (typeof localStorage !== 'undefined') { localStorage.setItem('__t', '1'); localStorage.removeItem('__t'); return localStorage; } } catch { /* sin localStorage */ }
   return almacenMemoria();
+}
+
+// Ventas ficticias por dia y negocio: estables (salen de la fecha), con el dia de hoy a medias segun la hora.
+function ventasDelDia(negocio, fecha, hoyTexto, ahoraFecha) {
+  let x = 0; for (const ch of negocio + fecha) x = (x * 31 + ch.charCodeAt(0)) % 100003;
+  const base = negocio === 'pollos' ? 410000 : 320000, dia = deTexto(fecha).getDay();
+  let total = Math.round((base * (0.7 + (x % 60) / 100) * (dia === 0 || dia === 6 ? 1.25 : 1)) / 100) * 100;
+  if (fecha > hoyTexto) return 0;
+  if (fecha === hoyTexto) total = Math.round(total * Math.min(1, Math.max(0.08, (ahoraFecha.getHours() - 8) / 12)));
+  return total;
+}
+function bloqueVentas(total, estado, desde) {
+  const iva = Math.round((total * 13) / 113);
+  return { total, iva, neto: total - iva, docs: Math.round(total / 3800), estado, desde };
+}
+function ventasDeRango(negocio, desde, hasta, hoyTexto, ahoraFecha) {
+  let total = 0; for (let d = desde; d <= hasta; d = sumarDias(d, 1)) total += ventasDelDia(negocio, d, hoyTexto, ahoraFecha);
+  return bloqueVentas(total);
 }
 
 export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => new Date(), simular = false } = {}) {
@@ -286,6 +304,29 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
       const u = exigirAdmin();
       return agruparCompras(comprasVisibles(leer(), u, negocios), { desde, hasta, por, proveedor });
     },
+    // ---------- Ventas en vivo (datos ficticios y estables: el mismo dia da la misma cifra) ----------
+    async ventasEnVivo({ negocios } = {}) {
+      const u = exigirAdmin(); const h = hoy(); const e = leer();
+      const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
+      const suma = (n, desde, hasta) => ventasDeRango(n, desde, hasta, h, ahora());
+      return { generado: ahora().toISOString(), negocios: ids.map((n) => {
+        const caja = e.cajas.filter((c) => c.negocioId === n).slice(-1)[0];
+        const turno = caja ? { ...bloqueVentas(Object.values(caja.ventas || {}).reduce((x, y) => x + (Number(y) || 0), 0), caja.estado, caja.fecha), abiertaPor: caja.abiertaPor || null, cerradaPor: caja.cerradaPor || null, desdeHora: caja.abiertaA || null } : null;
+        return { negocioId: n, turno, hoy: suma(n, h, h), semana: suma(n, lunesDe(h), h), mes: suma(n, inicioMes(h), h) };
+      }) };
+    },
+    async ventasAgrupadas({ negocios, desde, hasta, por }) {
+      const u = exigirAdmin(); const h = hoy();
+      const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
+      const grupos = new Map();
+      for (let d = desde; d <= hasta; d = sumarDias(d, 1)) {
+        const k = inicioPeriodo(d, por); const g = grupos.get(k) || { clave: k, etiqueta: k, facturas: 0, neto: 0, iva: 0, total: 0 };
+        for (const n of ids) { const v = ventasDeRango(n, d, d, h, ahora()); g.facturas += v.docs; g.neto += v.neto; g.iva += v.iva; g.total += v.total; }
+        grupos.set(k, g);
+      }
+      return [...grupos.values()].map((g) => ({ ...g, neto: Math.round(g.neto), iva: Math.round(g.iva), total: Math.round(g.total) })).sort((a, b) => a.clave.localeCompare(b.clave));
+    },
+    async ventasSuscribir(cb) { exigirAdmin(); const t = setInterval(() => cb({ tipo: 'pulso' }), 20000); return () => clearInterval(t); },
     async viajes() { exigir(); return (leer().viajes || []).slice().reverse(); },
     async viajeAgregar({ destino, fecha }) {
       const u = exigir(); if (!String(destino || '').trim() || !fecha) throw new Error('Falta el destino o la fecha');

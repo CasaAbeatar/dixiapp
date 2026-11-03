@@ -286,3 +286,22 @@ test('bodega: stock por local tras un traslado de bodega central a local (llenar
   assert.equal(await lp(), 60); assert.equal((await d.bodegaExistencias({ ubicacion: 'lp' })).find((x) => x.articuloId === 'pollo').bajoMinimo, false);
   assert.ok((await d.bodegaAlertas()).bajoMinimo.every((a) => a.ubicacionId));
 });
+
+test('ventas en vivo: hoy dentro de la semana y del mes, el mes coincide con los dias, el turno trae quien abrio y el cajero no entra', async () => {
+  const d = await admin();
+  const v = await d.ventasEnVivo({});
+  assert.deepEqual(v.negocios.map((n) => n.negocioId).sort(), ['pollos', 'soda']);
+  for (const n of v.negocios) {
+    assert.ok(n.hoy.total <= n.semana.total && n.semana.total <= n.mes.total + 1, `${n.negocioId}: hoy <= semana <= mes`);
+    assert.ok(Math.abs(n.hoy.neto + n.hoy.iva - n.hoy.total) <= 1);
+    if (n.turno) assert.ok(n.turno.abiertaPor, 'el turno trae el nombre de quien abrio');
+  }
+  const solo = await d.ventasEnVivo({ negocios: ['soda'] });
+  assert.deepEqual(solo.negocios.map((n) => n.negocioId), ['soda']);
+  const dias = await d.ventasAgrupadas({ desde: '2026-11-01', hasta: '2026-11-02', por: 'dia' });
+  const mes = await d.ventasAgrupadas({ desde: '2026-11-01', hasta: '2026-11-02', por: 'mes' });
+  assert.equal(Math.round(dias.reduce((a, x) => a + x.total, 0)), Math.round(mes[0].total));
+  const c = crearDatosPrueba({ almacen: mem(), ahora: () => new Date(2026, 10, 2, 15, 0) });
+  await c.iniciarSesion({ pin: '4321' });
+  await assert.rejects(() => c.ventasEnVivo({}), /No autorizado/);
+});

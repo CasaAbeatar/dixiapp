@@ -266,6 +266,19 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
       return resumenDesdeDias(dias, h);
     },
     async comprasAgrupadas(p) { return rpcAgrupada(p); },
+    // ---------- Ventas en vivo (solo lectura del facturador por funciones dixi.ventas_*) ----------
+    async ventasEnVivo({ negocios } = {}) {
+      await exigirAdmin();
+      const r = ok(await db().rpc('ventas_en_vivo', { p_negocios: negocios && negocios.length ? negocios : null }));
+      const bloque = (b) => (b ? { total: num(b.con_iva), iva: num(b.iva), neto: num(b.con_iva) - num(b.iva), docs: Number(b.docs), desde: b.desde, hasta: b.hasta, estado: b.estado, abiertaPor: b.abierta_por || null, cerradaPor: b.cerrada_por || null } : null);
+      return { generado: r.generado, negocios: (r.negocios || []).map((n) => ({ negocioId: n.negocio_id, turno: bloque(n.turno), hoy: bloque(n.hoy), semana: bloque(n.semana), mes: bloque(n.mes) })) };
+    },
+    async ventasAgrupadas({ negocios, desde, hasta, por }) {
+      await exigirAdmin();
+      const r = ok(await db().rpc('ventas_agrupadas', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: desde, p_hasta: hasta, p_por: por }));
+      return (r || []).map((f) => ({ clave: f.clave, etiqueta: f.clave, facturas: Number(f.documentos), neto: Number(f.sin_iva), iva: Number(f.iva), total: Number(f.con_iva) }));
+    },
+    async ventasSuscribir(cb) { await exigirAdmin(); const t = setInterval(() => cb({ tipo: 'pulso' }), 20000); return () => clearInterval(t); },
     // ---------- Inicio de Dixia ----------
     async viajes() {
       await exigir();

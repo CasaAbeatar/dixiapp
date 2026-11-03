@@ -38,7 +38,7 @@ function ticks(max) {
 }
 
 // Grafico de barras apiladas: neto (sin IVA) + IVA = total (con IVA). Cronologico de izquierda a derecha.
-export function graficoBarras(filas, por) {
+export function graficoBarras(filas, por, rotulo = 'Compras', titulos = TITULO_POR) {
   const W = 640, H = 290, ml = 74, mr = 10, mt = 14, mb = 54;
   const pw = W - ml - mr, ph = H - mt - mb;
   const maxVal = Math.max(0, ...filas.map((f) => f.total));
@@ -49,12 +49,12 @@ export function graficoBarras(filas, por) {
   const barras = filas.map((f, i) => {
     const cx = ml + bw * i + bw / 2, neto = Math.max(f.neto, 0), iva = Math.max(f.iva, 0);
     const yn = y(neto), yt = y(neto + iva);
-    return `<g><title>${esc(corto(f.clave))}: total con IVA ${colones(f.total)}, neto sin IVA ${colones(f.neto)}, IVA ${colones(f.iva)}, ${f.facturas} facturas</title>
+    return `<g><title>${esc(corto(f.clave))}: total con IVA ${colones(f.total)}, neto sin IVA ${colones(f.neto)}, IVA ${colones(f.iva)}, ${f.facturas} ${rotulo === 'Compras' ? 'facturas' : 'documentos'}</title>
       <rect x="${cx - ancho / 2}" y="${yn}" width="${ancho}" height="${Math.max(ph + mt - yn, 0)}" fill="var(--acento)" rx="2"/>
       ${iva > 0 ? `<rect x="${cx - ancho / 2}" y="${yt}" width="${ancho}" height="${Math.max(yn - yt, 0)}" fill="var(--acento-fondo)" stroke="var(--acento)" stroke-width="1" rx="2"/>` : ''}
       <text x="${cx}" y="${H - mb + 18}" text-anchor="middle" class="g-tx">${esc(etiquetaX(f.clave, por, i, filas.length))}</text></g>`;
   }).join('');
-  return `<svg class="grafico" viewBox="0 0 ${W} ${H}" role="img" aria-label="Compras ${TITULO_POR[por]}. Barras de izquierda (más antiguo) a derecha (más reciente)">
+  return `<svg class="grafico" viewBox="0 0 ${W} ${H}" role="img" aria-label="${rotulo} ${titulos[por]}. Barras de izquierda (más antiguo) a derecha (más reciente)">
     ${rejilla}${barras}
     <line x1="${ml}" x2="${W - mr}" y1="${y(0)}" y2="${y(0)}" stroke="var(--linea-fuerte)"/>
     <text x="${ml + pw / 2}" y="${H - 6}" text-anchor="middle" class="g-eje">${EJE_X[por]}, de más antiguo a más reciente</text>

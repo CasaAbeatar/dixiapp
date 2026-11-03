@@ -45,6 +45,10 @@ export const METODOS = [
   'comprasResumen',       // ({negocios, proveedor}) => { hoy, semana, mes } cada uno { facturas, neto, iva, total }
   'comprasAgrupadas',     // ({negocios, desde, hasta, por, proveedor}) => [{clave, etiqueta, facturas, neto, iva, total}]
   'comprasSuscribir',     // (callback) => funcion para cancelar (tiempo real)
+  // Ventas (solo administradores, solo consulta; salen del facturador con la misma regla de la caja: ventas facturadas menos notas de credito mas notas de debito)
+  'ventasEnVivo',         // ({negocios}) => { generado, negocios: [{negocioId, turno: {estado, desde, hasta, abiertaPor, cerradaPor, total, iva, neto, docs}|null, hoy, semana, mes}] } cada bloque {total, iva, neto, docs}; total = con IVA
+  'ventasAgrupadas',      // ({negocios, desde, hasta, por: 'dia'|'semana'|'mes'}) => [{clave, etiqueta, facturas, neto, iva, total}]  (facturas = documentos de venta)
+  'ventasSuscribir',      // (callback) => funcion para cancelar (se avisa cada pocos segundos mientras este abierta)
   // Bodega (solo administradores): se apoya en el inventario del facturador (fact.inv_*), sin duplicarlo
   'bodegaUbicaciones',    // () => [{id, nombre, tipo: 'bodega'|'local'}]
   'bodegaExistencias',    // ({ubicacion, q}) => [{articuloId, articulo, categoria, unidad, ubicacionId, ubicacion, cantidad, minimo, bajoMinimo, vencida, proximoVencimiento}]
