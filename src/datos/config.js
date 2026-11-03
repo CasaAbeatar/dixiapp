@@ -3,6 +3,8 @@
 // NUNCA poner aqui la llave service_role ni contrasenas.
 export const CONFIG = {
   modo: 'supabase',
+  // true: Inicio, Caja, Ventas y Cierres muestran datos de EJEMPLO (con etiqueta); Compras y Bodega siguen reales. Poner false cuando haya datos reales.
+  ejemplo: true,
   url: 'https://dwlbcbtwdungyrykgahm.supabase.co',
   llave: 'sb_publishable_gUoYvCNka0je2rbNeWPpUA_l26vgQbO',
   // Llave PUBLICA de los avisos al telefono (la privada vive solo en el servidor)

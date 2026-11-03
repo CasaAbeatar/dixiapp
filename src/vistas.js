@@ -53,11 +53,11 @@ export function vistaCorreo({ correo, error, cargando }) {
 }
 
 // ---------- Marco ----------
-export function marco({ negocio, hoy, pestana, pestanas, contenido, esPrueba }) {
+export function marco({ negocio, hoy, pestana, pestanas, contenido, esPrueba, etiqueta = 'Datos de prueba' }) {
   const botones = pestanas.map((p) => `<button class="pestana" data-accion="pestana" data-valor="${p}" ${p === pestana ? 'aria-current="page"' : ''}>${p}</button>`).join('');
   return `<div class="app"><header class="cabecera"><div class="cabecera-in">
       <div><div class="marca">Dixiapp</div><h1>${esc(negocio.nombre)}</h1><div class="fecha">${esc(fechaLarga(hoy))}</div></div>
-      ${esPrueba ? '<span class="etiqueta-prueba">Datos de prueba</span>' : ''}</div></header>
+      ${esPrueba ? `<span class="etiqueta-prueba">${esc(etiqueta)}</span>` : ''}</div></header>
     <main>${contenido}</main>
     <nav class="pestanas" aria-label="Secciones"><div class="pestanas-in">${botones}</div></nav></div>`;
 }
