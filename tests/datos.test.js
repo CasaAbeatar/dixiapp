@@ -69,40 +69,16 @@ test('la administradora no abre ni cierra caja (eso lo hacen las cajeras en el f
   await assert.rejects(() => d.abrirCaja('soda', { fondoInicial: 0 }), /cajeras en el facturador/);
 });
 
-test('entradas y salidas ajustan el esperado; el motivo es libre y se aprende', async () => {
+test('Dixiapp solo consulta el efectivo: no hay como registrar ni corregir entradas y salidas, pero se siguen viendo', async () => {
+  const { METODOS } = await import('../web/src/datos/interfaz.js');
+  for (const m of ['registrarMovimiento', 'corregirMovimiento', 'sugerenciasMotivos']) assert.equal(METODOS.includes(m), false, `${m} sale del contrato`);
+  for (const quien of [await admin(), await cajero()]) for (const m of ['registrarMovimiento', 'corregirMovimiento']) assert.equal(typeof quien[m], 'undefined', `${m} no existe`);
   const d = await admin();
-  const antes = (await d.cajaActual('soda')).esperado;
-  await d.registrarMovimiento({ negocioId: 'soda', tipo: 'salida', monto: 12500, motivo: 'Reparación   de la nevera' });
-  assert.equal((await d.cajaActual('soda')).esperado, antes - 12500);
-  await d.registrarMovimiento({ negocioId: 'soda', tipo: 'entrada', monto: 5000, motivo: 'Sencillo o cambio' });
-  assert.equal((await d.cajaActual('soda')).esperado, antes - 7500);
-  const sug = await d.sugerenciasMotivos('salida');
-  assert.ok(sug.includes('Reparación de la nevera'));
-  await d.registrarMovimiento({ negocioId: 'soda', tipo: 'salida', monto: 100, motivo: 'reparación de la nevera' });
-  assert.equal((await d.sugerenciasMotivos('salida'))[0].toLowerCase(), 'reparación de la nevera');
-  await assert.rejects(() => d.registrarMovimiento({ negocioId: 'soda', tipo: 'salida', monto: 0, motivo: 'x' }), /monto/);
-  await assert.rejects(() => d.registrarMovimiento({ negocioId: 'soda', tipo: 'salida', monto: 5, motivo: ' ' }), /motivo/);
-  await assert.rejects(() => d.registrarMovimiento({ negocioId: 'pollos', tipo: 'salida', monto: 5, motivo: 'x' }), /caja abierta/);
-});
-
-test('correccion por contramovimiento: no se edita ni se borra, y solo una vez', async () => {
-  const d = await admin();
-  const antes = (await d.cajaActual('soda')).esperado;
-  const m = await d.registrarMovimiento({ negocioId: 'soda', tipo: 'salida', monto: 7000, motivo: 'Gas' });
-  const c = await d.corregirMovimiento(m.id, { nota: 'me equivoque' });
-  assert.equal(c.tipo, 'entrada'); assert.equal(c.monto, 7000); assert.match(c.motivo, /^Corrección: Gas/); assert.equal(c.corrigeA, m.id);
-  assert.equal((await d.cajaActual('soda')).esperado, antes);
+  const caja = await d.cajaActual('soda');
+  assert.ok(caja.esperado > 0 && caja.entradas >= 0 && caja.salidas >= 0, 'totales de entradas, salidas y esperado siguen visibles');
   const act = await d.actividad('soda', '2026-11-02');
-  assert.equal(act.movimientos.find((x) => x.id === m.id).corregido, true);
-  await assert.rejects(() => d.corregirMovimiento(m.id, {}), /ya fue corregido/);
-  await assert.rejects(() => d.corregirMovimiento(c.id, {}), /no se puede corregir/);
-});
-
-test('cualquier cajero ve la actividad de otras fechas, con quien cerro', async () => {
-  const c = await cajero();
-  const act = await c.actividad('soda', '2026-10-30');
-  assert.equal(act.cajas.length, 1); assert.ok(act.cajas[0].cerradaPor); assert.equal('esperado' in act.cajas[0], false);
-  assert.ok(act.movimientos.length >= 1);
+  assert.ok(act.movimientos.length >= 1, 'las entradas y salidas del dia se ven');
+  assert.equal(caja.esperado, caja.fondoInicial + caja.ventas.efectivo + caja.entradas - caja.salidas);
 });
 
 test('cierres y semana de la administradora (el cierre lo hizo una cajera)', async () => {
@@ -163,10 +139,10 @@ test('compras en tiempo real: los suscritos reciben aviso cuando llega una factu
 test('los datos persisten en el almacen', async () => {
   const al = mem(); const ahora = () => new Date(2026, 10, 2, 10, 30);
   const a = crearDatosPrueba({ almacen: al, ahora }); await a.iniciarSesion({ pin: '1234' });
-  await a.registrarMovimiento({ negocioId: 'soda', tipo: 'salida', monto: 2000, motivo: 'Gas' });
+  await a.viajeAgregar({ destino: 'Nosara', fecha: '2026-12-01' });
   const b = crearDatosPrueba({ almacen: al, ahora });
   assert.equal((await b.sesionActual()).rol, 'administrador');
-  assert.equal((await b.actividad('soda', '2026-11-02')).movimientos.some((m) => m.monto === 2000), true);
+  assert.equal((await b.viajes())[0].destino, 'Nosara');
 });
 
 test('bodega: solo administradores; existencias por lugar con minimos y alertas', async () => {
@@ -386,4 +362,63 @@ test('capa mixta: caja, ventas y cierres salen de ejemplo; compras y bodega sigu
   const { items } = await d.cierres('soda', { limite: 3 }); assert.ok(items.length >= 1);
   assert.ok((await d.resumenSemana('soda')).dias.length >= 1);
   await d.cerrarSesion(); assert.ok(llamadas.includes('real:cerrarSesion'));
+});
+
+test('cierres de caja del facturador: turnos cerrados con cuadre completo, abiertos sin cifras, cajero fuera', async () => {
+  const d = await admin();
+  const r = await d.cierresTurnos({});
+  assert.equal(r.hoy, '2026-11-02');
+  const cer = r.turnos.filter((t) => t.estado === 'cerrado'), abi = r.turnos.filter((t) => t.estado === 'abierto');
+  assert.ok(cer.length > 20 && abi.length >= 1);
+  for (const t of cer) {
+    assert.ok(t.negocioId && t.abiertoPor && t.cerradoPor && t.abiertoHora && t.cerradoHora);
+    assert.equal(t.totalVentas, t.ventas.efectivo + t.ventas.tarjeta + t.ventas.sinpe + t.ventas.transferencia + t.ventas.otros);
+    assert.equal(t.esperado, t.fondo + t.ventas.efectivo + t.entradas - t.salidas);
+    assert.equal(t.diferencia, t.contado - t.esperado);
+    assert.equal(t.movEntradas.reduce((a, m) => a + m.monto, 0), t.entradas); assert.equal(t.movSalidas.reduce((a, m) => a + m.monto, 0), t.salidas);
+  }
+  for (const t of abi) for (const k of ['fondo', 'totalVentas', 'ventas', 'esperado', 'contado', 'diferencia', 'entradas', 'salidas']) assert.equal(k in t, false, `un turno abierto no trae ${k}`);
+  const orden = r.turnos.map((t) => t.dia); assert.deepEqual([...orden].sort().reverse(), orden);
+  const solo = await d.cierresTurnos({ negocios: ['pollos'], desde: '2026-10-30', hasta: '2026-11-01' });
+  assert.ok(solo.turnos.length >= 3 && solo.turnos.every((t) => t.negocioId === 'pollos' && t.dia >= '2026-10-30' && t.dia <= '2026-11-01'));
+  assert.equal((await d.cierresTurnos({ limite: 5 })).turnos.length, 5);
+  assert.equal((await d.cierresTurnos({ limite: 5 })).hayMas, true);
+  const c = await cajero();
+  await assert.rejects(() => c.cierresTurnos({}), /No autorizado/);
+});
+
+test('calculos de cierres: resumen por dia y por local suman solo turnos cerrados y separan faltantes de sobrantes', async () => {
+  const { resumirTurnos, agruparPorDia, resumenPorNegocio } = await import('../web/src/datos/cierres-calc.js');
+  const v = (e) => ({ efectivo: e, tarjeta: 0, sinpe: 0, transferencia: 0, otros: 0 });
+  const t = (id, negocioId, dia, hora, dif, tot) => ({ id, negocioId, dia, estado: 'cerrado', cerradoHora: hora, totalVentas: tot, ventasNetas: tot, ventas: v(tot), entradas: 100, salidas: 50, diferencia: dif });
+  const lista = [t('a', 'soda', '2026-11-01', '14:00', -500, 1000), t('b', 'soda', '2026-11-01', '22:00', 300, 2000), t('c', 'pollos', '2026-10-31', '21:00', 0, 500), { id: 'd', negocioId: 'soda', dia: '2026-11-02', estado: 'abierto', abiertoHora: '06:00' }];
+  const r = resumirTurnos(lista);
+  assert.deepEqual([r.turnos, r.cerrados, r.abiertos, r.totalVentas, r.faltantes, r.sobrantes, r.diferencia, r.conDiferencia], [4, 3, 1, 3500, -500, 300, -200, 2]);
+  const dias = agruparPorDia(lista);
+  assert.deepEqual(dias.map((x) => x.dia), ['2026-11-02', '2026-11-01', '2026-10-31']);
+  assert.deepEqual(dias[1].turnos.map((x) => x.id), ['b', 'a']);
+  assert.equal(dias[0].totalVentas, 0);
+  const por = resumenPorNegocio(lista, ['soda', 'pollos']);
+  assert.deepEqual(por.map((x) => [x.negocioId, x.totalVentas]), [['soda', 3000], ['pollos', 500]]);
+});
+
+test('capa mixta: cierres reales del facturador reemplazan al ejemplo; sin ninguno, sigue el ejemplo etiquetado', async () => {
+  const { crearDatosMixto } = await import('../web/src/datos/mixto.js');
+  const almacen = () => { const m = new Map(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) }; };
+  const turno = { id: 'real-1', negocioId: 'pollos', estado: 'abierto', dia: '2026-11-02', abiertoPor: 'Ana', abiertoDia: '2026-11-02', abiertoHora: '06:00' };
+  const crear = (turnos) => crearDatosMixto({ esPrueba: false, acceso: 'pin', cerrarSesion: async () => {}, bloquear: async () => {}, cierresTurnos: async () => ({ turnos, hayMas: false, hoy: '2026-11-02' }) }, { almacen: almacen(), ahora: () => new Date(2026, 10, 2, 10, 30) });
+  const conReales = crear([turno]);
+  assert.equal((await conReales.cierresTurnos({})).turnos[0].id, 'real-1'); assert.equal(conReales.esEjemploEn('Cierres'), false);
+  assert.equal(conReales.esEjemploEn('Caja'), true);
+  const sinReales = crear([]);
+  const ej = await sinReales.cierresTurnos({}); assert.ok(ej.turnos.length > 20); assert.equal(sinReales.esEjemploEn('Cierres'), true);
+  for (const m of ['registrarMovimiento', 'corregirMovimiento', 'sugerenciasMotivos']) assert.equal(typeof conReales[m], 'undefined', `la capa de ejemplo tampoco ofrece ${m}`);
+});
+
+test('la pantalla de bienvenida dura 4 segundos y se usa al abrir, al volver, al tocar un aviso y tras la clave', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const app = await readFile(new URL('../web/src/app.js', import.meta.url), 'utf8');
+  assert.match(app, /const SPLASH_MS = 4000;/);
+  assert.equal((app.match(/mostrarSplash\(\)/g) || []).length, 3, 'abrir, volver al frente (incluye tocar un aviso) y tras la clave');
+  assert.equal(/mostrarSplash\([^)]*\d{3,}/.test(app), false, 'ningun caso pone otra duracion');
 });

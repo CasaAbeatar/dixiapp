@@ -107,32 +107,53 @@ test('el administrador obtiene el resumen por rpc', async () => {
   assert.equal((await d.cajaActual('soda')).esperado, 60060);
 });
 
-test('movimientos: solo se mandan las columnas permitidas y el servidor decide quien/cuando', async () => {
+test('Dixiapp solo consulta el efectivo: no existe registrar ni corregir movimientos y nunca se inserta en movimientos', async () => {
   const { d, cl } = await entrar((q) => {
-    if (q.tabla === 'cajas') return { data: { id: 7 }, error: null };
-    if (q.tabla === 'movimientos' && q.op === 'insert') return { data: { id: 99, caja_id: 7, negocio_id: 'soda', fecha: '2026-11-02', creado_en: '2026-11-02T18:00:00Z', tipo: q.valores.tipo, monto: q.valores.monto, motivo: q.valores.motivo, nota: '', registrado_por_nombre: 'Emil', corrige_a: q.valores.corrige_a ?? null }, error: null };
-    if (q.tabla === 'movimientos') return { data: { id: 5, negocio_id: 'soda', tipo: 'salida', monto: 3000, motivo: 'Gas', corrige_a: null }, error: null };
+    if (q.tabla === 'cajas') return { data: [], error: null };
+    if (q.tabla === 'movimientos') return { data: [{ id: 5, caja_id: 7, negocio_id: 'soda', fecha: '2026-11-02', creado_en: '2026-11-02T18:00:00Z', tipo: 'salida', monto: 3000, motivo: 'Gas', nota: '', registrado_por_nombre: 'Cajera', corrige_a: null }], error: null };
   });
   await d.configurarPinLocal('4827');
-  const m = await d.registrarMovimiento({ negocioId: 'soda', tipo: 'salida', monto: 3000, motivo: '  Gas ', nota: '' });
-  const ins = cl.llamadas.find((l) => l.op === 'insert');
-  assert.deepEqual(Object.keys(ins.valores).sort(), ['caja_id', 'monto', 'motivo', 'negocio_id', 'nota', 'tipo']);
-  assert.equal(ins.valores.motivo, 'Gas'); assert.equal(m.hora, '12:00');
-  const c = await d.corregirMovimiento(5, { nota: 'error' });
-  const ins2 = cl.llamadas.filter((l) => l.op === 'insert')[1];
-  assert.equal(ins2.valores.corrige_a, 5); assert.equal(ins2.valores.tipo, 'entrada'); assert.equal(c.corrigeA, 5);
-  for (const k of ['registrado_por', 'fecha', 'creado_en', 'abierta_por']) assert.equal(k in ins.valores, false);
+  for (const m of ['registrarMovimiento', 'corregirMovimiento', 'sugerenciasMotivos']) assert.equal(typeof d[m], 'undefined', `${m} no existe`);
+  const act = await d.actividad('soda', '2026-11-02');
+  assert.equal(act.movimientos.length, 1); assert.equal(act.movimientos[0].monto, 3000);
+  assert.equal(cl.llamadas.some((l) => l.op === 'insert' && l.tabla === 'movimientos'), false);
 });
 
-test('correccion duplicada y caja duplicada se explican en espanol', async () => {
+test('cierres de caja del facturador: pide cierres_turnos, arma dia y horas en hora de Costa Rica y no da cifras de un turno abierto', async () => {
+  const { d, cl } = await entrar((q) => {
+    if (q.rpc === 'cierres_turnos') return { data: { generado: '2026-11-03T05:00:00Z', hoy: '2026-11-02', hay_mas: true, turnos: [
+      { id: 'a', negocio_id: 'pollos', terminal: 1, estado: 'abierto', abierto_por: 'Ana', abierto_en: '2026-11-03T04:52:35Z' },
+      { id: 'b', negocio_id: 'soda', terminal: 1, estado: 'cerrado', numero: 43, abierto_por: 'Ana', abierto_en: '2026-11-02T12:00:00Z', cerrado_por: 'Luis', cerrado_en: '2026-11-03T03:10:00Z',
+        fondo: '50000.00', entradas: '15000.00', salidas: '10000.00', devoluciones_efectivo: '34400.00', cobros_nota_debito_efectivo: 0,
+        ventas: { efectivo: '54684.96', tarjeta: 0, sinpe: '1000', transferencia: 0, otros: 0 }, total_ventas: '55684.96', ventas_netas: '21284.96',
+        esperado: '75284.96', contado: '45000.00', diferencia: '-30284.96', nota: null,
+        mov_entradas: [{ motivo: 'Sencillo', monto: '15000.00', en: '2026-11-02T18:24:00Z', por: 'Ana' }], mov_salidas: [{ motivo: 'Hielo', monto: '10000.00', en: '2026-11-02T19:00:00Z', por: 'Ana' }] }] }, error: null };
+  });
+  await d.configurarPinLocal('4827');
+  const r = await d.cierresTurnos({ negocios: ['soda'], desde: '2026-10-04', hasta: '2026-11-02', limite: 300 });
+  assert.deepEqual(cl.llamadas.find((l) => l.rpc === 'cierres_turnos').args, { p_negocios: ['soda'], p_desde: '2026-10-04', p_hasta: '2026-11-02', p_limite: 300 });
+  assert.equal(r.hayMas, true); assert.equal(r.turnos.length, 2);
+  const [ab, ce] = r.turnos;
+  assert.deepEqual(Object.keys(ab).sort(), ['abiertoDia', 'abiertoHora', 'abiertoPor', 'dia', 'estado', 'id', 'negocioId', 'terminal']);
+  assert.equal(ab.dia, '2026-11-02'); assert.equal(ab.abiertoHora, '22:52'); // 04:52 UTC es 22:52 del dia anterior en Costa Rica
+  assert.equal(ce.dia, '2026-11-02'); assert.equal(ce.cerradoHora, '21:10'); assert.equal(ce.abiertoHora, '06:00');
+  assert.equal(ce.diferencia, -30284.96); assert.equal(ce.ventasNetas, 21284.96); assert.equal(ce.movSalidas[0].hora, '13:00');
+  assert.ok(Math.abs(ce.esperado - (ce.fondo + ce.ventas.efectivo + ce.entradas - ce.salidas - ce.devolucionesEfectivo)) < 0.005);
+});
+
+test('cierres de caja del facturador: quien no es administrador no llega al servidor', async () => {
+  const { d, cl } = await entrar(() => undefined, CAJERO);
+  await d.configurarPinLocal('4827');
+  await assert.rejects(() => d.cierresTurnos({}), /No autorizado/);
+  assert.equal(cl.llamadas.some((l) => l.rpc === 'cierres_turnos'), false);
+});
+
+test('caja duplicada se explica en espanol', async () => {
   const { d } = await entrar((q) => {
     if (q.tabla === 'cajas' && q.op === 'insert') return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "cajas_una_abierta_por_negocio"', details: '' } };
     if (q.tabla === 'cajas') return { data: { id: 7 }, error: null };
-    if (q.tabla === 'movimientos' && q.op === 'insert') return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "movimientos_una_correccion"', details: 'Key (corrige_a)=(5) already exists.' } };
-    if (q.tabla === 'movimientos') return { data: { id: 5, negocio_id: 'soda', tipo: 'salida', monto: 3000, motivo: 'Gas', corrige_a: null }, error: null };
   }, CAJERO);
   await d.configurarPinLocal('4827');
-  await assert.rejects(() => d.corregirMovimiento(5, {}), /ya fue corregido/);
   await assert.rejects(() => d.abrirCaja('soda', { fondoInicial: 0 }), /Ya hay una caja abierta/);
   assert.equal(mensajeError({ code: '42501', message: 'x' }), 'No tiene permiso para hacer esto.');
   assert.match(mensajeError(new TypeError('Failed to fetch')), /Sin conexión/);

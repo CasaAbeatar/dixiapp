@@ -28,8 +28,6 @@ for (const [nombre, w, h] of tamanos) for (const tema of ['light', 'dark']) {
   for (const c of '1234') await p.click(`.tecla[data-valor="${c}"]`);
   await p.click('text=Entrar'); await p.waitForSelector('.pestanas');
   await foto('caja'); if (nombre !== 'telefono' && tema === 'light') await foto('caja-pantalla', false);
-  await p.click('[data-accion="abrir-form"][data-valor="salida"]'); await p.click('#formulario .ficha:has-text("Gas")'); await p.fill('#f-monto', '12500'); await foto('caja-salida');
-  await p.click('#formulario >> text=Cancelar');
   await tab('Compras'); await p.waitForSelector('.resumen'); await foto('compras'); await foto('compras-pantalla', false);
   await p.locator('.factura').first().click(); await foto('compras-detalle', false);
   await p.click('[data-accion="por"][data-valor="semana"]'); if (tema === 'light') await foto('compras-semana');

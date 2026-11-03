@@ -28,27 +28,9 @@ assert.match(await p.textContent('.cabecera h1'), /Soda La Bomba/);
 const esp0 = await esperado();
 assert.match(await p.textContent('.estado'), /Abierta desde las 6:30 a\. m\. por/); paso('Caja abierta muestra esperado y quien abrió');
 
-// Salida con motivo libre
-await p.click('[data-accion="abrir-form"][data-valor="salida"]'); await p.waitForSelector('#formulario');
-await p.click('#formulario .primario'); assert.match(await p.textContent('#formulario .error'), /monto/); paso('Valida monto vacío');
-await p.fill('#f-monto', '15000'); await p.click('#formulario .primario'); assert.match(await p.textContent('#formulario .error'), /motivo/); paso('Valida motivo vacío');
-await p.fill('#f-motivo', 'Reparación de prueba'); await p.fill('#f-nota', 'nota de prueba'); await p.click('#formulario .primario');
-await p.waitForSelector('.aviso'); assert.match(await p.textContent('.aviso'), /₡15\.000/);
-assert.ok((await p.textContent('main')).includes('Reparación de prueba')); assert.equal(await esperado(), esp0 - 15000); paso('Salida con motivo libre guardada; el esperado baja 15.000');
-
-// Sugerencia aprendida
-await p.click('[data-accion="abrir-form"][data-valor="entrada"]'); await p.click('#formulario .ficha:has-text("Sencillo")'); assert.equal(await p.inputValue('#f-motivo'), 'Sencillo o cambio');
-await p.fill('#f-monto', '4000'); await p.click('#formulario .primario'); assert.equal(await esperado(), esp0 - 11000); paso('Sugerencia de motivo llena el campo; entrada sube el esperado');
-await p.click('[data-accion="abrir-form"][data-valor="salida"]'); assert.ok((await p.locator('#formulario .ficha').allTextContents()).includes('Reparación de prueba')); paso('El motivo nuevo aparece como sugerencia aprendida');
-await p.click('#formulario >> text=Cancelar');
-
-// Correccion por contramovimiento
-await p.locator('.mov', { hasText: 'Reparación de prueba' }).locator('[data-accion="corregir"]').click();
-await p.click('text=Confirmar corrección'); await p.waitForSelector('.aviso');
-assert.equal(await esperado(), esp0 - 11000 + 15000);
-assert.ok(await p.locator('.mov', { hasText: 'Corrección: Reparación de prueba' }).count() === 1);
-assert.ok(await p.locator('.mov', { hasText: 'Reparación de prueba' }).locator('text=Corregido').count() >= 1);
-assert.equal(await p.locator('.mov', { hasText: 'Reparación de prueba' }).locator('[data-accion="corregir"]').count(), 0); paso('Corrección con contramovimiento: nada se borra, el original queda marcado y no se corrige dos veces');
+// Solo consulta del efectivo: ni botones ni formulario para registrar o corregir entradas y salidas
+assert.equal(await p.locator('[data-accion="abrir-form"], [data-accion="corregir"], #formulario').count(), 0); paso('Caja sin botones para registrar ni corregir entradas y salidas');
+assert.match(await p.textContent('main'), /registran en el facturador/);
 
 // Actividad de otra fecha
 await p.click('[data-accion="dia-menos"]'); await p.waitForSelector('text=Volver a hoy');
@@ -72,10 +54,12 @@ await p.click('.selector-negocio >> text=Pollos La Bomba'); await p.waitForSelec
 await p.click('text=Abrir caja'); await p.waitForSelector('.estado.abierta'); assert.match(await p.textContent('.aviso'), /₡0/); paso('Pollos abre con fondo ₡0 (sin monto fijo)');
 await p.click('.selector-negocio >> text=Soda La Bomba');
 
-// Cierres
-await tab('Cierres'); assert.ok(await p.locator('main .tarjeta').count() > 4);
-assert.match(await p.textContent('main'), /Abrió .* Cerró /); await p.click('text=Ver cierres anteriores');
-assert.ok(await p.locator('main .tarjeta').count() > 8); paso('Cierres muestra esperado, contado y quién abrió y cerró');
+// Cierres de caja del facturador (solo lectura)
+await tab('Cierres'); await p.waitForSelector('[data-id="cierres-hoy"]');
+assert.match(await p.textContent('main'), /Hoy[\s\S]*Resumen de los últimos 30 días[\s\S]*Días anteriores/); paso('Cierres abre con lo de hoy, luego el resumen y los días anteriores');
+await p.locator('.tn-fila', { hasText: 'Cerró' }).first().click();
+assert.match(await p.textContent('.tn-detalle'), /Total de ventas[\s\S]*Efectivo esperado[\s\S]*Efectivo contado[\s\S]*Diferencia/); paso('Al tocar un turno cerrado se ve el cuadre completo');
+await sinDesborde();
 
 // Compras
 await tab('Compras'); await p.waitForSelector('.resumen');
