@@ -19,7 +19,7 @@ const s = {
   acceso: 'sin_sesion', usuario: null, negocios: [], negocioId: null, pestana: 'Caja', tema: leerLS('dixiapp.tema', 'auto'),
   pin: '', pin1: '', faseCrear: 'nuevo', errorPin: '', correo: '', errorCorreo: '', cargando: false,
   fecha: null, form: null, aviso: '', error: '', fondo: '', cierre: null, corrigiendo: null, limite: 7,
-  filtro: { neg: 'ambos', proveedor: '' }, bodega: estadoBodega(), viaje: null, viajeForm: null, resolviendo: null, notaDif: '', avisoEfectivo: '', por: 'dia', abierta: null, vivo: false, ultimo: Date.now(), esperado: 0,
+  filtro: { neg: 'ambos', proveedor: '' }, bodega: estadoBodega(), viaje: null, viajeForm: null, resolviendo: null, notaDif: '', avisoEfectivo: '', por: 'dia', abierta: null, lineasFac: {}, vivo: false, ultimo: Date.now(), esperado: 0,
 };
 aplicarTema(s.tema);
 
@@ -112,7 +112,7 @@ async function construirCompras(hoy) {
     datos.comprasAgrupadas({ ...base, ...rango, por: s.por }),
     datos.comprasAgrupadas({ ...base, ...rango, por: 'tipo_proveedor' }), datos.comprasAgrupadas({ ...base, ...rango, por: 'rubro' }), datos.comprasAgrupadas({ ...base, ...rango, por: 'proveedor' }),
   ]);
-  return vistaCompras({ hoy, negociosPermitidos: s.negocios, filtro: s.filtro, proveedores, resumen, ultimas, por: s.por, grafico: rellenarPeriodos(serie, s.por, rango.desde, rango.hasta), rango, tipos, rubros, provs, abierta: s.abierta, vivo: s.vivo, error: s.error });
+  return vistaCompras({ hoy, negociosPermitidos: s.negocios, filtro: s.filtro, proveedores, resumen, ultimas, por: s.por, lineas: s.lineasFac, grafico: rellenarPeriodos(serie, s.por, rango.desde, rango.hasta), rango, tipos, rubros, provs, abierta: s.abierta, vivo: s.vivo, error: s.error });
 }
 
 function vistaAccesoActual() {
@@ -247,7 +247,15 @@ raiz.addEventListener('click', async (ev) => {
     // Compras
     if (a === 'filtro-negocio') { s.filtro.neg = v; s.abierta = null; return pintar(); }
     if (a === 'por') { s.por = v; return pintar(); }
-    if (a === 'factura') { s.abierta = s.abierta === v ? null : v; return pintar(); }
+    if (a === 'factura') {
+      s.abierta = s.abierta === v ? null : v; pintar();
+      if (s.abierta && !(s.abierta in s.lineasFac)) {
+        const clave = s.abierta;
+        try { s.lineasFac[clave] = await datos.comprasLineas(clave); } catch (e) { s.lineasFac[clave] = []; }
+        if (s.abierta === clave) pintar();
+      }
+      return;
+    }
   } catch (e) { s.error = e.message; s.corrigiendo = null; pintar(); }
 });
 

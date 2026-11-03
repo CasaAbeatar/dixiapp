@@ -268,6 +268,10 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
       for (const c of comprasVisibles(leer(), u, negocios)) m.set(c.proveedorCedula, c.proveedor);
       return [...m].map(([cedula, nombre]) => ({ cedula, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre));
     },
+    async comprasLineas(clave) {
+      return [{ linea: 1, detalle: 'Pechuga de pollo sin hueso', cantidad: 20, unidad: 'kg', precioUnitario: 3900, subtotal: 78000, impuesto: 0, total: 78000 },
+        { linea: 2, detalle: 'Aceite vegetal 18 L', cantidad: 2, unidad: 'unidad', precioUnitario: 21500, subtotal: 43000, impuesto: 5590, total: 48590 }];
+    },
     async comprasUltimas({ negocios, proveedor = null, limite = 8 } = {}) {
       const u = exigirAdmin();
       return comprasVisibles(leer(), u, negocios).filter((c) => !proveedor || c.proveedorCedula === proveedor)
