@@ -3,13 +3,15 @@
 @font-face { font-family: 'Colon'; src: url(fuentes/colon-600.woff2) format('woff2'); font-weight: 600; unicode-range: U+20A1; font-display: swap; }
 @font-face { font-family: 'Colon'; src: url(fuentes/colon-700.woff2) format('woff2'); font-weight: 700; unicode-range: U+20A1; font-display: swap; }
 @font-face { font-family: 'Colon'; src: url(fuentes/colon-800.woff2) format('woff2'); font-weight: 800; unicode-range: U+20A1; font-display: swap; }
+@font-face { font-family: 'Figtree'; src: url(fuentes/figtree-400.woff2) format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Figtree'; src: url(fuentes/figtree-700.woff2) format('woff2'); font-weight: 700; font-display: swap; }
 /* El simbolo del colon (U+20A1) no existe en las fuentes de texto: se toma de Inter con el mismo grosor */
 :root {
   --fondo: #f6f7f9; --superficie: #ffffff; --texto: #0f1722; --suave: #5b6675; --linea: #dfe3ea; --linea-fuerte: #c3cad5;
   --acento: #2563eb; --acento-texto: #ffffff; --acento-fondo: #e8efff;
   --ok: #0f7a4f; --ok-fondo: #e3f5ec; --mal: #c5282d; --mal-fondo: #fdebec;
   --radio: 14px; --sombra: 0 1px 0 rgba(15,23,34,.03);
-  --tipo: "Colon", -apple-system, "Helvetica Neue", Helvetica, "Segoe UI", Roboto, Arial, sans-serif;
+  --tipo: "Colon", "Figtree", -apple-system, "Helvetica Neue", Helvetica, "Segoe UI", Roboto, Arial, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema="claro"]) {
@@ -248,3 +250,38 @@ input[type=date] { width: 100%; min-height: 52px; padding: 10px 14px; background
 .entrada-boton { width: 100%; min-height: 48px; margin-top: 18px; border: 0; border-radius: 14px; background: #fff; color: #7a2e0b; font-size: 17px; font-weight: 500; letter-spacing: .02em; text-shadow: none; }
 .entrada-boton:disabled { background: rgba(255,255,255,.45); color: rgba(60,25,5,.6); }
 @media (max-width: 700px) { .entrada { align-items: flex-end; justify-content: center; background-position: 6% 30%; padding: 16px; } .entrada-panel { max-width: 340px; padding: 18px 20px 18px; } .entrada-panel h1 { font-size: 23px; } .entrada-sub { margin-bottom: 14px; font-size: 19px; } }
+
+/* ---------- Inicio ---------- */
+.ini-h { font-size: 38px; font-weight: 600; letter-spacing: -.02em; line-height: 1.05; margin: 6px 0 6px; }
+.ini-msg { font-size: 19px; color: var(--suave); margin: 0 0 18px; }
+.ini-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+.ini-k { position: relative; overflow: hidden; border-radius: 22px; padding: 18px 20px; color: #fff; min-height: 128px; border: 1px solid rgba(255,255,255,.55);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.8), inset 0 -16px 30px rgba(0,0,0,.14), 0 18px 34px -10px rgba(60,30,10,.32); }
+.ini-k::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(165deg, rgba(255,255,255,.5), rgba(255,255,255,.1) 38%, rgba(255,255,255,0) 60%); pointer-events: none; }
+.ini-k::after { content: ""; position: absolute; right: -34px; top: -40px; width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.8), rgba(255,255,255,.28) 40%, rgba(255,255,255,.05) 70%); }
+.ini-k small { display: block; font-size: 14px; font-weight: 600; opacity: .95; position: relative; z-index: 1; }
+.ini-n { font-size: 32px; font-weight: 700; margin: 8px 0 2px; position: relative; z-index: 1; }
+.ini-d { font-size: 14px; position: relative; z-index: 1; }
+.k1 { background: linear-gradient(135deg, #d6233a, #ff6a4d); } .k2 { background: linear-gradient(135deg, #e89a10, #ffd24a); color: #2b1c05; } .k3 { background: linear-gradient(135deg, #17986a, #5fd39a); }
+.ini-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; align-items: start; }
+.ini-c, .ini-ia { background: var(--superficie); border-radius: 22px; padding: 18px 20px; border: 1px solid var(--linea); }
+.ini-c h3 { font-size: 19px; font-weight: 600; margin: 0 0 10px; display: flex; justify-content: space-between; align-items: center; }
+.ini-c h3 span { font-size: 14px; color: var(--suave); font-weight: 400; }
+.ini-ia { margin-bottom: 14px; background: linear-gradient(110deg, #e8f0ff, #efe6ff); color: #1a1a2e; display: grid; gap: 4px; border: 0; }
+.ini-ia b { font-weight: 600; }
+.ini-dec { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--linea); }
+.ini-dec:first-of-type { border-top: 0; }
+.ini-ic { width: 42px; height: 42px; border-radius: 13px; flex: none; display: grid; place-items: center; font-weight: 700; color: #fff; }
+.ini-t { flex: 1; min-width: 0; } .ini-t b { display: block; font-weight: 600; } .ini-t small, .ini-ft small { color: var(--suave); display: block; }
+.ini-btn { background: var(--texto); color: var(--superficie); border: 0; border-radius: 999px; padding: 0 20px; min-height: 44px; font: inherit; font-weight: 600; cursor: pointer; }
+.ini-link { background: none; border: 0; color: var(--acento); font: inherit; font-weight: 600; min-height: 44px; padding: 0 8px; cursor: pointer; }
+.ini-f { display: flex; gap: 12px; align-items: center; padding: 9px 0; }
+.ini-dt { width: 52px; text-align: center; background: var(--fondo); border-radius: 14px; padding: 6px 0; flex: none; }
+.ini-dt b { display: block; font-size: 22px; line-height: 1; } .ini-dt i { font-style: normal; font-size: 11px; font-weight: 600; color: var(--suave); text-transform: uppercase; }
+.ini-dt.viaje { background: linear-gradient(135deg, #dff1ff, #e6e3ff); color: #1a1a2e; }
+.ini-ft { flex: 1; min-width: 0; } .ini-ft b { font-weight: 600; }
+.ini-viaje { display: grid; gap: 10px; padding-top: 8px; } .ini-viaje label { display: grid; gap: 4px; font-weight: 600; font-size: 14px; }
+.ini-viaje input { font: inherit; min-height: 48px; border: 1px solid var(--linea-fuerte); border-radius: 12px; padding: 0 12px; background: var(--superficie); color: var(--texto); }
+.ini-fila-b { display: flex; justify-content: space-between; align-items: center; } .ini-err { color: var(--mal); margin: 0; } .ini-vacio { color: var(--suave); margin: 4px 0; }
+@media (max-width: 760px) { .ini-kpis, .ini-grid { grid-template-columns: 1fr; } .ini-h { font-size: 30px; } .ini-k { min-height: 0; }
+  .ini-dec { flex-wrap: wrap; row-gap: 10px; } .ini-t { flex: 1 1 calc(100% - 56px); } .ini-dec .ini-btn { margin-left: auto; min-height: 48px; } }
