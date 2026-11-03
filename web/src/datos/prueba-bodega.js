@@ -80,7 +80,7 @@ export function crearBodegaPrueba({ almacen, hoy, ahora, exigirAdmin, nombreUsua
     return items.map((it) => mover(e, tipo, it.articuloId, u, -numero(it.cantidad, art(it.articuloId).nombre), motivo.trim()));
   };
   const vistaConteo = (e, k) => {
-    const ls = k.lineas.map((l) => ({ articuloId: l.articuloId, articulo: art(l.articuloId).nombre, categoria: art(l.articuloId).categoria, unidad: art(l.articuloId).unidad, contado: l.contado,
+    const ls = k.lineas.filter((l) => !/^col[oó]n(es)?$/i.test(art(l.articuloId).unidad)).map((l) => ({ articuloId: l.articuloId, articulo: art(l.articuloId).nombre, categoria: art(l.articuloId).categoria, unidad: art(l.articuloId).unidad, contado: l.contado,
       diferencia: l.contado === null ? null : Math.round((l.contado - cant(e, l.articuloId, k.ubicacionId)) * 1000) / 1000 }));
     return { id: k.id, ubicacionId: k.ubicacionId, ubicacion: ubic(k.ubicacionId).nombre, estado: k.estado, total: ls.length, contadas: ls.filter((l) => l.contado !== null).length, lineas: ls };
   };
@@ -149,7 +149,7 @@ export function crearBodegaPrueba({ almacen, hoy, ahora, exigirAdmin, nombreUsua
     async bodegaConteoIniciar(ubicacion) {
       exigirAdmin(); const e = leer(); ubic(ubicacion);
       if (abierto(e, ubicacion)) throw new Error(`Ya hay un conteo abierto en ${ubic(ubicacion).nombre}: termínelo o cancélelo primero.`);
-      const lineas = Object.keys(e.existencias).filter((k) => k.endsWith(`|${ubicacion}`) && e.existencias[k].cant > 0).map((k) => ({ articuloId: k.split('|')[0], contado: null }))
+      const lineas = Object.keys(e.existencias).filter((k) => k.endsWith(`|${ubicacion}`) && e.existencias[k].cant > 0 && !/^col[oó]n(es)?$/i.test(art(k.split('|')[0]).unidad)).map((k) => ({ articuloId: k.split('|')[0], contado: null }))
         .sort((a, b) => art(a.articuloId).categoria.localeCompare(art(b.articuloId).categoria) || art(a.articuloId).nombre.localeCompare(art(b.articuloId).nombre));
       const k = { id: `conteo-${e.siguiente++}`, ubicacionId: ubicacion, estado: 'abierto', lineas }; e.conteos.push(k); guardar(e); return vistaConteo(e, k);
     },
