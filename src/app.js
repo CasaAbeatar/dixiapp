@@ -30,9 +30,15 @@ let pintando = 0;
 async function pintar() {
   const yo = ++pintando;
   try {
+    // Primer vistazo inmediato: el saludo y el mensaje salen enseguida y los numeros se llenan al llegar
+    if (s.usuario && s.pestana === 'Inicio' && esAdmin() && !s.inicioListo) {
+      const hh = new Date().getHours();
+      raiz.innerHTML = marco({ negocio: { nombre: 'Inicio' }, hoy: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Costa_Rica' }), pestana: 'Inicio', pestanas: pestanasDe(), esPrueba: datos.esPrueba,
+        contenido: `<section class="ini"><h2 class="ini-h">${hh < 12 ? 'Buenos días' : hh < 19 ? 'Buenas tardes' : 'Buenas noches'}, Dixia</h2><p class="ini-msg">${esc(mensajeDelDia().texto)}</p><p class="ini-vacio">Cargando tus números…</p></section>` });
+    }
     const html = await construir();
     if (yo !== pintando) return; // llego una pintura mas nueva
-    raiz.innerHTML = html;
+    raiz.innerHTML = html; if (s.pestana === 'Inicio') s.inicioListo = true;
     document.getElementById('a-pin')?.focus();
     if (s.usuario && s.pestana === 'Caja') actualizarDif();
     if (s.usuario && s.pestana === 'Bodega') despuesDePintar(raiz, s.bodega);
@@ -70,12 +76,13 @@ async function construir() {
 }
 
 async function construirInicio(hoy) {
-  const negocios = await Promise.all(s.negocios.map(async (n) => {
+  // Todo se pide a la vez (no uno despues de otro) para que el inicio llegue rapido
+  const pNegocios = Promise.all(s.negocios.map(async (n) => {
     const [caja, act] = await Promise.all([datos.cajaActual(n.id), datos.actividad(n.id, hoy)]);
     return { id: n.id, nombre: n.nombre, caja, movs: act.movimientos.length };
   }));
   const nombreNeg = (id) => s.negocios.find((n) => n.id === id)?.nombre || id;
-  const [alertas, compras, difs, viajes, movs] = await Promise.all([
+  const [negocios, alertas, compras, difs, viajes, movs] = await Promise.all([pNegocios,
     datos.bodegaAlertas().catch(() => ({ bajoMinimo: [] })), datos.comprasResumen({ negocios: null }).catch(() => ({ semana: { facturas: 0, total: 0 } })),
     datos.diferenciasPendientes().catch(() => []), datos.viajes().catch(() => []), datos.movimientosRecientes({ limite: 6 }).catch(() => []),
   ]);
@@ -124,7 +131,7 @@ async function entrarConUsuario(u) {
   s.usuario = u; s.negocios = await datos.negocios();
   const guardado = leerLS('dixiapp.negocio', '');
   s.negocioId = s.negocios.some((n) => n.id === guardado) ? guardado : s.negocios[0].id;
-  s.bodega = estadoBodega(); s.pestana = esAdmin() ? 'Inicio' : 'Caja'; s.fecha = null; s.pin = ''; s.pin1 = ''; s.errorPin = ''; s.form = null; s.cierre = null; s.aviso = ''; s.error = '';
+  s.inicioListo = false; s.bodega = estadoBodega(); s.pestana = esAdmin() ? 'Inicio' : 'Caja'; s.fecha = null; s.pin = ''; s.pin1 = ''; s.errorPin = ''; s.form = null; s.cierre = null; s.aviso = ''; s.error = '';
   suscribirCompras(); suscribirEfectivo();
 }
 
@@ -164,6 +171,7 @@ async function evaluarAcceso() {
 
 async function intentarPin() {
   s.errorPin = '';
+  const etq = document.querySelector('.entrada-campo span'); if (etq) etq.textContent = 'Entrando…';
   try {
     if (datos.acceso === 'pin') {
       const u = await datos.iniciarSesion({ pin: s.pin });
