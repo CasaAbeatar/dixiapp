@@ -62,7 +62,7 @@ async function construir() {
   } else if (s.pestana === 'Bodega' && esAdmin()) {
     contenido = await construirBodega(datos, s.bodega, hoy); titulo = { nombre: 'Bodega' };
   } else {
-    contenido = vistaMas({ usuario: s.usuario, tema: s.tema, horarios: await datos.horarios(), esAdmin: esAdmin(), esPrueba: datos.esPrueba, conBloqueo: !datos.esPrueba, negocios: s.negocios });
+    contenido = vistaMas({ usuario: s.usuario, tema: s.tema, esAdmin: esAdmin(), esPrueba: datos.esPrueba, conBloqueo: !datos.esPrueba, negocios: s.negocios });
     titulo = s.negocios.find((n) => n.id === s.negocioId);
   }
   s.error = '';

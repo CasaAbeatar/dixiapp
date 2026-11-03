@@ -169,12 +169,8 @@ export function vistaCierres({ cierres, hayMas, semana }) {
 }
 
 // ---------- Más ----------
-export function vistaMas({ usuario, tema, horarios, esAdmin, esPrueba, conBloqueo, negocios }) {
-  const temas = [['auto', 'Automático'], ['claro', 'Claro'], ['oscuro', 'Oscuro']];
-  const hor = horarios.map((h) => `<div class="fila"><span class="etq">${esc(negocios.find((n) => n.id === h.negocioId)?.nombre.replace(' La Bomba', '') || '')} · ${esc(h.servicio)}</span><b>${esc(h.texto)}</b></div>`).join('');
-  return `<h2 class="titulo-seccion">Horarios</h2><section class="tarjeta">${hor || '<p class="vacio">Sin horarios.</p>'}</section>
-    <h2 class="titulo-seccion">Apariencia</h2><section class="tarjeta"><div class="fichas">${temas.map(([k, t]) => `<button class="ficha" data-accion="tema" data-valor="${k}" aria-pressed="${tema === k}">${t}</button>`).join('')}</div></section>
-    <h2 class="titulo-seccion">Sesión</h2><section class="tarjeta"><div class="fila"><span class="etq">Usuario</span><b>${esc(usuario.nombre)}</b></div>
+export function vistaMas({ usuario, esAdmin, esPrueba, conBloqueo, negocios }) {
+  return `<h2 class="titulo-seccion">Sesión</h2><section class="tarjeta"><div class="fila"><span class="etq">Usuario</span><b>${esc(usuario.nombre)}</b></div>
       <div class="fila"><span class="etq">Rol</span><b>${esAdmin ? 'Administrador' : 'Cajero'}</b></div>
       <div class="acciones" style="margin-top:12px">${conBloqueo ? boton('bloquear', 'Bloquear ahora') : '<span></span>'}${boton('salir', 'Salir de sesión')}</div></section>
     <h2 class="titulo-seccion">Próximas pantallas</h2><section class="tarjeta proximo"><p style="margin:0"><b>Aquí irán las pantallas nuevas.</b></p>
