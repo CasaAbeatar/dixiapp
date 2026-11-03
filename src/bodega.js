@@ -34,7 +34,8 @@ export async function construirBodega(datos, b, hoy) {
   } else if (b.seccion === 'sacar') {
     const [filas, movimientos, destinoFilas] = await Promise.all([datos.bodegaExistencias({ ubicacion: b.ubicacion }), datos.bodegaMovimientos({ ubicacion: b.ubicacion, limite: 80 }),
       b.tipo === 'traslado' && b.destino ? datos.bodegaExistencias({ ubicacion: b.destino }) : null]);
-    contenido = vistaSacar({ b, filas, ubicaciones, hoy, movimientos, destinoFilas });
+    const sinBolsa = (xs) => b.tipo === 'traslado' ? xs : xs.filter((f) => !/^col[oó]n(es)?$/i.test(String(f.unidad || ''))); // comida preparada (en colones) baja sola con las ventas: no se saca a mano
+    contenido = vistaSacar({ b, filas: sinBolsa(filas), ubicaciones, hoy, movimientos, destinoFilas });
   } else if (b.seccion === 'recibir') {
     const [facturas, notas] = await Promise.all([datos.bodegaPorRecibir(), datos.bodegaNotas({ estado: 'por_revisar' })]);
     const recibidas = b.sub === 'recibidas' ? await datos.bodegaRecibidas({ limite: 15 }) : [];

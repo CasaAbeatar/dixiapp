@@ -97,8 +97,8 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
   const fx = async (nombre, args) => ok(await cliente.rpc(nombre, args));
   const idem = () => (cripto.randomUUID ? cripto.randomUUID() : `${Date.now()}-${Math.random()}`);
   const itemFx = (i) => ({ articulo_id: i.articuloId, cantidad: String(i.cantidad) });
-  const mapConteo = (r) => ({ id: r.conteo.id, ubicacionId: r.conteo.ubicacion_id, ubicacion: r.conteo.ubicacion, estado: r.conteo.estado, total: Number(r.conteo.lineas), contadas: Number(r.conteo.contadas),
-    lineas: (r.lineas || []).map((l) => ({ articuloId: l.articulo_id, articulo: l.articulo, categoria: l.categoria, unidad: l.unidad, contado: num(l.contado), diferencia: num(l.diferencia) })) });
+  const mapConteo = (r) => ({ id: r.conteo.id, ubicacionId: r.conteo.ubicacion_id, ubicacion: r.conteo.ubicacion, estado: r.conteo.estado, total: (r.lineas || []).filter((l) => !/^col[oó]n(es)?$/i.test(String(l.unidad || ''))).length, contadas: (r.lineas || []).filter((l) => l.contado != null && !/^col[oó]n(es)?$/i.test(String(l.unidad || ''))).length,
+    lineas: (r.lineas || []).filter((l) => !/^col[oó]n(es)?$/i.test(String(l.unidad || ''))).map((l) => ({ articuloId: l.articulo_id, articulo: l.articulo, categoria: l.categoria, unidad: l.unidad, contado: num(l.contado), diferencia: num(l.diferencia) })) });
 
   const api = {
     esPrueba: false,
