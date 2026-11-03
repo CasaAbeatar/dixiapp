@@ -1,10 +1,10 @@
 // Service worker de Dixiapp: cachea SOLO la interfaz (archivos estaticos de esta lista).
 // Nunca guarda datos de caja: cualquier otra peticion (por ejemplo Supabase) va directo a la red.
-const VERSION = 'dixiapp-interfaz-v25';
+const VERSION = 'dixiapp-interfaz-v26';
 const INTERFAZ = [
   './', './index.html', './estilos.css', './manifest.webmanifest',
   './src/app.js', './src/vistas.js', './src/vistas-compras.js', './src/vistas-ventas.js', './src/vistas-cierres.js', './src/vistas-inicio.js', './src/mensajes.js', './src/vistas-bodega.js', './src/bodega.js', './src/ui.js', './vendor/supabase-js.js',
-  './src/datos/index.js', './src/datos/interfaz.js', './src/datos/prueba.js', './src/datos/mixto.js', './src/datos/prueba-bodega.js', './src/datos/supabase.js', './src/datos/push-cliente.js',
+  './src/datos/index.js', './src/datos/interfaz.js', './src/datos/prueba.js', './src/datos/mixto.js', './src/datos/prueba-bodega.js', './src/datos/supabase.js', './src/datos/push-cliente.js', './src/datos/copia-local.js', './src/aviso-conexion.js',
   './src/datos/config.js', './src/datos/minimos-sugeridos.js', './sin-conexion.html', './src/datos/compras-calc.js', './src/datos/calculos.js', './src/datos/cierres-calc.js', './src/datos/fechas.js', './src/datos/formato.js',
   './fotos/entrada.jpg', './iconos/favicon.svg', './iconos/favicon-64.png', './favicon.ico', './fuentes/colon-400.woff2', './fuentes/colon-500.woff2', './fuentes/colon-600.woff2', './fuentes/colon-700.woff2', './fuentes/colon-800.woff2', './fuentes/figtree-400.woff2', './fuentes/figtree-600.woff2', './fuentes/figtree-700.woff2', './iconos/icono-180.png', './iconos/icono-192.png', './iconos/icono-512.png', './iconos/icono-maskable-512.png',
 ];

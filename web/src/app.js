@@ -1,3 +1,4 @@
+import './aviso-conexion.js';
 import { datos } from './datos/index.js';
 import { leerMonto, aplicarTema, esc } from './ui.js';
 import { vistaPin, vistaEntrada, vistaSplash, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaMas, MINIMOS_EFECTIVO } from './vistas.js';
