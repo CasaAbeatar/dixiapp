@@ -9,6 +9,14 @@ const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'o
 const corto = (t) => { const d = deTexto(t); return `${d.getDate()} ${MESES[d.getMonth()]}`; };
 const NOMBRE_TIPO = { ...GRUPOS_COMPRA };
 
+const norm = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+export function resultadosBusqueda(proveedores, texto) {
+  const q = norm(texto).trim(); if (!q) return '';
+  const hallados = proveedores.filter((p) => norm(p.nombre).includes(q) || String(p.cedula).includes(q));
+  if (!hallados.length) return '<p class="pie">Ningún proveedor tiene ese nombre.</p>';
+  return `<ul class="lista busca-res">${hallados.slice(0, 8).map((p) => `<li><button class="fila-art" data-accion="elegir-prov" data-valor="${esc(p.cedula)}"><span class="a-nom">${esc(p.nombre)}</span></button></li>`).join('')}</ul>${hallados.length > 8 ? `<p class="pie">Hay ${hallados.length} coincidencias; escriba más del nombre para acotar.</p>` : ''}`;
+}
+
 export const POR = [['dia', 'Día'], ['semana', 'Semana'], ['mes', 'Mes']];
 const TITULO_POR = { dia: 'por día, últimos 14 días', semana: 'por semana, últimas 8 semanas', mes: 'por mes, últimos 6 meses' };
 const EJE_X = { dia: 'Día', semana: 'Semana (empieza el lunes)', mes: 'Mes' };
@@ -112,6 +120,7 @@ export function vistaCompras({ lineas, hoy, negociosPermitidos, filtro, proveedo
   }
   return `${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
     <div class="barra-filtros">${fichasNeg}${selProv}</div>
+    <div class="busca-prov"><input id="f-busca" type="search" autocomplete="off" placeholder="Buscar proveedor por nombre (comercial, persona física o jurídica)" value="${esc(filtro.busca || '')}"><div id="f-resultados">${resultadosBusqueda(proveedores, filtro.busca)}</div></div>
     <div class="cuadricula tres">${tarjetaResumen('Hoy', resumen.hoy)}${tarjetaResumen('Esta semana', resumen.semana)}${tarjetaResumen('Este mes', resumen.mes)}</div>
     <p class="pie">Cifras brutas con IVA incluido y netas sin IVA, en colones. La semana empieza el lunes.</p>
     <div class="columnas">

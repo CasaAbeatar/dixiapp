@@ -1,7 +1,7 @@
 import { datos } from './datos/index.js';
 import { leerMonto, aplicarTema, esc } from './ui.js';
 import { vistaPin, vistaEntrada, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas } from './vistas.js';
-import { vistaCompras } from './vistas-compras.js';
+import { resultadosBusqueda, vistaCompras } from './vistas-compras.js';
 import { vistaInicio, diasHasta } from './vistas-inicio.js';
 import { mensajeDelDia } from './mensajes.js';
 import { fechaLarga } from './datos/fechas.js';
@@ -19,7 +19,7 @@ const s = {
   acceso: 'sin_sesion', usuario: null, negocios: [], negocioId: null, pestana: 'Caja', tema: leerLS('dixiapp.tema', 'auto'),
   pin: '', pin1: '', faseCrear: 'nuevo', errorPin: '', correo: '', errorCorreo: '', cargando: false,
   fecha: null, form: null, aviso: '', error: '', fondo: '', cierre: null, corrigiendo: null, limite: 7,
-  filtro: { neg: 'ambos', proveedor: '' }, bodega: estadoBodega(), viaje: null, viajeForm: null, resolviendo: null, notaDif: '', avisoEfectivo: '', por: 'dia', abierta: null, lineasFac: {}, vivo: false, ultimo: Date.now(), esperado: 0,
+  filtro: { neg: 'ambos', proveedor: '', busca: '' }, bodega: estadoBodega(), viaje: null, viajeForm: null, resolviendo: null, notaDif: '', avisoEfectivo: '', por: 'dia', abierta: null, lineasFac: {}, vivo: false, ultimo: Date.now(), esperado: 0,
 };
 aplicarTema(s.tema);
 
@@ -104,6 +104,7 @@ async function construirInicio(hoy) {
 async function construirCompras(hoy) {
   const negs = s.filtro.neg === 'ambos' ? null : [s.filtro.neg];
   let proveedores = await datos.comprasProveedores({ negocios: negs });
+  s.provsCache = proveedores;
   if (s.filtro.proveedor && !proveedores.some((p) => p.cedula === s.filtro.proveedor)) s.filtro.proveedor = '';
   const base = { negocios: negs, proveedor: s.filtro.proveedor || null };
   const rango = rangoPorDefecto(hoy, s.por);
@@ -246,6 +247,7 @@ raiz.addEventListener('click', async (ev) => {
     if (a === 'cancelar-cierre') { s.cierre = null; return pintar(); }
     // Compras
     if (a === 'filtro-negocio') { s.filtro.neg = v; s.abierta = null; return pintar(); }
+    if (a === 'elegir-prov') { s.filtro.proveedor = v; s.filtro.busca = ''; s.abierta = null; return pintar(); }
     if (a === 'por') { s.por = v; return pintar(); }
     if (a === 'factura') {
       s.abierta = s.abierta === v ? null : v; pintar();
@@ -269,6 +271,7 @@ raiz.addEventListener('input', (ev) => {
     if (id === 'a-fondo') s.fondo = ev.target.value;
     if (id === 'c-contado') actualizarDif();
   }
+  if (id === 'f-busca') { s.filtro.busca = ev.target.value; const r = document.getElementById('f-resultados'); if (r) r.innerHTML = resultadosBusqueda(s.provsCache || [], s.filtro.busca); return; }
   if (id === 'd-nota') s.notaDif = ev.target.value;
   if (id === 'v-destino' && s.viajeForm) s.viajeForm.destino = ev.target.value;
   if (id === 'v-fecha' && s.viajeForm) s.viajeForm.fecha = ev.target.value;
