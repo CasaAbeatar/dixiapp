@@ -35,6 +35,11 @@ export function vistaEntrada({ saludo, pin, error }) {
   </form></div>`;
 }
 
+// Pantalla de bienvenida: la misma foto y el nombre de la app, sin la tarjeta de clave. Sale unos segundos al abrir o volver a la app.
+export function vistaSplash() {
+  return `<div class="entrada"><div class="nombre-app"><div class="nombre-texto" aria-label="Dixiapp">Dixi<em>a</em>pp</div><div class="lema">¿Lista para cumplir tus sueños?</div></div></div>`;
+}
+
 export function vistaCorreo({ correo, error, cargando }) {
   return `<div class="acceso"><form class="acceso-caja" data-form="correo" autocomplete="on">
     <div class="marca">Grupo DMA La Bomba</div><h1>Dixiapp</h1>

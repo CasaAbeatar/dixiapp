@@ -265,6 +265,9 @@ test('modo clave de 4 numeros: entra por el servicio de acceso, no guarda nada l
   assert.equal(u.rol, 'administrador'); assert.equal(await d.estadoAcceso(), 'abierta');
   assert.deepEqual(pedidas.map((p) => p.cuerpo), [{ pin: '1111' }, { pin: '2222' }, { pin: '3333' }]); assert.equal(pedidas[0].llave, 'pub');
   assert.equal(al.m.size, 0);
+  // Sesion permanente: al reabrir la app (instancia nueva, sesion guardada) entra sin pedir la clave otra vez
+  const d2 = crearDatosSupabase({ cliente: cl, almacen: al, modoAcceso: 'pin', urlAcceso: 'https://x/functions/v1/dixi-acceso', llave: 'pub', pedir });
+  assert.equal(await d2.estadoAcceso(), 'abierta'); assert.equal((await d2.sesionActual()).rol, 'administrador');
   await d.bloquear(); assert.equal(await d.estadoAcceso(), 'sin_sesion');
   assert.ok(cl.llamadas.some((l) => l.signOut && l.signOut.scope === 'local'));
 });
