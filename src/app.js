@@ -1,6 +1,6 @@
 import { datos } from './datos/index.js';
 import { leerMonto, aplicarTema, esc } from './ui.js';
-import { vistaPin, vistaEntrada, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas, MINIMOS_EFECTIVO } from './vistas.js';
+import { vistaPin, vistaEntrada, vistaSplash, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas, MINIMOS_EFECTIVO } from './vistas.js';
 import { resultadosBusqueda, vistaCompras } from './vistas-compras.js';
 import { vistaInicio, diasHasta } from './vistas-inicio.js';
 import { mensajeDelDia } from './mensajes.js';
@@ -213,7 +213,7 @@ async function intentarPin() {
   try {
     if (datos.acceso === 'pin') {
       const u = await datos.iniciarSesion({ pin: s.pin });
-      if (!u) { s.errorPin = datos.esPrueba ? 'PIN incorrecto. Intente de nuevo.' : 'Clave incorrecta. Intente de nuevo.'; s.pin = ''; } else await entrarConUsuario(u);
+      if (!u) { s.errorPin = datos.esPrueba ? 'PIN incorrecto. Intente de nuevo.' : 'Clave incorrecta. Intente de nuevo.'; s.pin = ''; } else { const bienvenida = mostrarSplash(); await entrarConUsuario(u); s.pin = ''; await pintar(); await bienvenida; return; }
     } else if (s.acceso === 'crear_pin') {
       if (s.faseCrear === 'nuevo') { s.pin1 = s.pin; s.pin = ''; s.faseCrear = 'confirmar'; }
       else if (s.pin !== s.pin1) { s.errorPin = 'Los PIN no coinciden. Empiece de nuevo.'; s.pin = ''; s.pin1 = ''; s.faseCrear = 'nuevo'; }
@@ -354,11 +354,20 @@ document.addEventListener('keydown', (ev) => {
   else if (ev.key === 'Enter' && s.pin.length >= 4) intentarPin();
 });
 for (const t of ['click', 'touchstart']) document.addEventListener(t, () => { s.ultimo = Date.now(); }, { passive: true });
-// Bloqueo por inactividad (solo con acceso real): pide el PIN otra vez tras 5 minutos sin tocar la pantalla
-setInterval(async () => {
-  if (datos.esPrueba || !s.usuario || Date.now() - s.ultimo < 5 * 60 * 1000) return;
-  await datos.bloquear(); await evaluarAcceso(); pintar();
-}, 15000);
+// Sin bloqueo por inactividad: una vez que Dixia entra, la sesion queda abierta en ese aparato hasta que ella toque «Salir de sesión».
+// Pantalla de bienvenida de 2 segundos (solo en modo real): al abrir, al volver a la app y al entrar con la clave.
+const SPLASH_MS = 2000;
+function mostrarSplash(ms = SPLASH_MS) {
+  if (datos.esPrueba || datos.acceso !== 'pin') return Promise.resolve();
+  document.getElementById('splash')?.remove();
+  const el = document.createElement('div'); el.id = 'splash'; el.innerHTML = vistaSplash(); document.body.appendChild(el);
+  return new Promise((fin) => setTimeout(() => { el.classList.add('sale'); setTimeout(() => { el.remove(); fin(); }, 350); }, ms));
+}
+let oculta = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { oculta = Date.now(); return; }
+  if (s.usuario && oculta) { oculta = 0; mostrarSplash(); }
+});
 
 async function abrirCaja() {
   const fondo = leerMonto(s.fondo) ?? 0;
@@ -395,6 +404,7 @@ async function cerrar(confirmar) {
 }
 
 async function iniciar() {
+  mostrarSplash();
   try { await evaluarAcceso(); } catch (e) { s.errorPin = e.message; }
   const destino = { '#ventas': 'Ventas', '#cierres': 'Cierres', '#bodega': 'Bodega', '#compras': 'Compras' }[location.hash]; // al tocar un aviso se abre la pantalla que corresponde
   if (destino && s.usuario && esAdmin()) s.pestana = destino;

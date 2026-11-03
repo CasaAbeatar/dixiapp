@@ -106,7 +106,11 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
     async hoy() { return hoy(); },
 
     async estadoAcceso() {
-      if (modoAcceso === 'pin') return desbloqueado && (await sesion()) ? 'abierta' : 'sin_sesion';
+      if (modoAcceso === 'pin') {
+        // Sesion permanente: si este aparato ya entro una vez, la sesion guardada abre la app sin pedir la clave otra vez
+        if (!(await sesion())) { desbloqueado = false; return 'sin_sesion'; }
+        desbloqueado = true; return 'abierta';
+      }
       const s = await sesion(); if (!s) return 'sin_sesion';
       if (!leerPin(s.user.id)) return 'crear_pin';
       return desbloqueado ? 'abierta' : 'bloqueada';

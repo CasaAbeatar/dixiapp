@@ -363,3 +363,7 @@ body { background:
 .top-cifras { display: grid; text-align: right; justify-items: end; } .top-cifras .etq { font-size: 14px; }
 .top-vacio { margin: 10px 0; color: var(--suave); } .top-sin { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--linea); }
 .columnas > * { min-width: 0; }
+
+/* Pantalla de bienvenida de 2 segundos sobre toda la app */
+#splash { position: fixed; inset: 0; z-index: 9999; opacity: 1; transition: opacity .35s ease; }
+#splash.sale { opacity: 0; pointer-events: none; }
