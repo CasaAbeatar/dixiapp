@@ -311,7 +311,11 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
       const suma = (n, desde, hasta) => ventasDeRango(n, desde, hasta, h, ahora());
       return { generado: ahora().toISOString(), negocios: ids.map((n) => {
         const caja = e.cajas.filter((c) => c.negocioId === n).slice(-1)[0];
-        const turno = caja ? { ...bloqueVentas(Object.values(caja.ventas || {}).reduce((x, y) => x + (Number(y) || 0), 0), caja.estado, caja.fecha), abiertaPor: caja.abiertaPor || null, cerradaPor: caja.cerradaPor || null, desdeHora: caja.abiertaA || null } : null;
+        const bt = caja ? bloqueVentas(Object.values(caja.ventas || {}).reduce((x, y) => x + (Number(y) || 0), 0), caja.estado, caja.fecha) : null;
+        // En el turno de la cajera tambien facturan el administrador y la hermana de vez en cuando: el turno dice quien hizo que
+        const turno = caja ? { ...bt, abiertaPor: 'Gisela (cajera)', cerradaPor: caja.estado === 'cerrada' ? 'Yarixa (cajera)' : null, desdeHora: caja.abiertaA || null, terminal: 1,
+          participantes: [{ usuario: 'gisela', nombre: 'Gisela (cajera)', abrio: true, ventas: Math.max(bt.docs - 3, 0), notas: 1, total: bt.total - Math.round(bt.total * 0.04) },
+            { usuario: 'emil', nombre: 'Emil Martínez', abrio: false, ventas: 3, notas: 1, total: Math.round(bt.total * 0.04) }] } : null;
         return { negocioId: n, turno, hoy: suma(n, h, h), semana: suma(n, lunesDe(h), h), mes: suma(n, inicioMes(h), h) };
       }) };
     },
@@ -326,6 +330,12 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
       }
       return [...grupos.values()].map((g) => ({ ...g, neto: Math.round(g.neto), iva: Math.round(g.iva), total: Math.round(g.total) })).sort((a, b) => a.clave.localeCompare(b.clave));
     },
+    // Avisos (simulados: en el modo de prueba no se manda nada al telefono)
+    async avisosEstado() { exigirAdmin(); const e = leer(); return { motivo: '', activo: !!e.avisos, prefs: e.avisos || {} }; },
+    async avisosActivar() { exigirAdmin(); const e = leer(); e.avisos = {}; guardar(e); return { motivo: '', activo: true, prefs: {} }; },
+    async avisosDesactivar() { exigirAdmin(); const e = leer(); e.avisos = null; guardar(e); },
+    async avisosGuardarPrefs(prefs) { exigirAdmin(); const e = leer(); e.avisos = { ...prefs }; guardar(e); return e.avisos; },
+    async avisosProbar() { exigirAdmin(); },
     async ventasSuscribir(cb) { exigirAdmin(); const t = setInterval(() => cb({ tipo: 'pulso' }), 20000); return () => clearInterval(t); },
     async viajes() { exigir(); return (leer().viajes || []).slice().reverse(); },
     async viajeAgregar({ destino, fecha }) {

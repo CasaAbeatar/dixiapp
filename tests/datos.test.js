@@ -305,3 +305,13 @@ test('ventas en vivo: hoy dentro de la semana y del mes, el mes coincide con los
   await c.iniciarSesion({ pin: '4321' });
   await assert.rejects(() => c.ventasEnVivo({}), /No autorizado/);
 });
+
+test('avisos del telefono: activar, apagar uno, monto minimo y desactivar (modo de prueba)', async () => {
+  const d = await crearDatosPrueba(); await d.iniciarSesion({ pin: '1234' });
+  assert.equal((await d.avisosEstado()).activo, false);
+  assert.equal((await d.avisosActivar()).activo, true);
+  await d.avisosGuardarPrefs({ resumen_diario: false, efectivo_minimo: 25000 });
+  const e = await d.avisosEstado();
+  assert.equal(e.prefs.resumen_diario, false); assert.equal(e.prefs.efectivo_minimo, 25000);
+  await d.avisosDesactivar(); assert.equal((await d.avisosEstado()).activo, false);
+});

@@ -46,8 +46,13 @@ export const METODOS = [
   'comprasAgrupadas',     // ({negocios, desde, hasta, por, proveedor}) => [{clave, etiqueta, facturas, neto, iva, total}]
   'comprasSuscribir',     // (callback) => funcion para cancelar (tiempo real)
   // Ventas (solo administradores, solo consulta; salen del facturador con la misma regla de la caja: ventas facturadas menos notas de credito mas notas de debito)
-  'ventasEnVivo',         // ({negocios}) => { generado, negocios: [{negocioId, turno: {estado, desde, hasta, abiertaPor, cerradaPor, total, iva, neto, docs}|null, hoy, semana, mes}] } cada bloque {total, iva, neto, docs}; total = con IVA
+  'ventasEnVivo',         // ({negocios}) => { generado, negocios: [{negocioId, turno: {estado, desde, hasta, abiertaPor, cerradaPor, terminal, participantes:[{usuario, nombre, abrio, ventas, notas, total}], total, iva, neto, docs}|null  (turno del FACTURADOR: lo abre la cajera y dentro facturan tambien administrador y hermana), hoy, semana, mes}] } cada bloque {total, iva, neto, docs}; total = con IVA
   'ventasAgrupadas',      // ({negocios, desde, hasta, por: 'dia'|'semana'|'mes'}) => [{clave, etiqueta, facturas, neto, iva, total}]  (facturas = documentos de venta)
+  'avisosEstado',         // () => {motivo:''|'ios_sin_instalar'|'sin_soporte'|'bloqueado', activo, prefs}
+  'avisosActivar',        // () => {activo, prefs}   (pide el permiso del telefono)
+  'avisosDesactivar',     // () => void
+  'avisosGuardarPrefs',   // (prefs) => prefs
+  'avisosProbar',         // () => void   (manda un aviso de prueba)
   'ventasSuscribir',      // (callback) => funcion para cancelar (se avisa cada pocos segundos mientras este abierta)
   // Bodega (solo administradores): se apoya en el inventario del facturador (fact.inv_*), sin duplicarlo
   'bodegaUbicaciones',    // () => [{id, nombre, tipo: 'bodega'|'local'}]

@@ -3,6 +3,8 @@
 // Acceso: correo + contrasena (Supabase Auth) y, ademas, un PIN local por aparato para desbloquear sin escribir la clave.
 // El PIN solo guarda un hash PBKDF2 con sal en este aparato y solo sirve mientras haya una sesion valida.
 import { validarImplementacion } from './interfaz.js';
+import { CONFIG } from './config.js';
+import { motivoNoDisponible, suscripcionActual, crearSuscripcion, datosDe } from './push-cliente.js';
 import { horaLegible, lunesDe, sumarDias } from './fechas.js';
 import { resumenDesdeDias, desdeResumen } from './compras-calc.js';
 import { SUGERENCIA_MINIMOS } from './minimos-sugeridos.js';
@@ -270,7 +272,7 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
     async ventasEnVivo({ negocios } = {}) {
       await exigirAdmin();
       const r = ok(await db().rpc('ventas_en_vivo', { p_negocios: negocios && negocios.length ? negocios : null }));
-      const bloque = (b) => (b ? { total: num(b.con_iva), iva: num(b.iva), neto: num(b.con_iva) - num(b.iva), docs: Number(b.docs), desde: b.desde, hasta: b.hasta, estado: b.estado, abiertaPor: b.abierta_por || null, cerradaPor: b.cerrada_por || null } : null);
+      const bloque = (b) => (b ? { total: num(b.con_iva), iva: num(b.iva), neto: num(b.con_iva) - num(b.iva), docs: Number(b.docs), desde: b.desde, hasta: b.hasta, estado: b.estado, abiertaPor: b.abierta_por || null, cerradaPor: b.cerrada_por || null, terminal: b.terminal ?? null, participantes: (b.participantes || []).map((p) => ({ usuario: p.usuario, nombre: p.nombre, abrio: !!p.abrio, ventas: Number(p.ventas || 0), notas: Number(p.notas || 0), total: num(p.con_iva) })) } : null);
       return { generado: r.generado, negocios: (r.negocios || []).map((n) => ({ negocioId: n.negocio_id, turno: bloque(n.turno), hoy: bloque(n.hoy), semana: bloque(n.semana), mes: bloque(n.mes) })) };
     },
     async ventasAgrupadas({ negocios, desde, hasta, por }) {
@@ -278,6 +280,35 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
       const r = ok(await db().rpc('ventas_agrupadas', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: desde, p_hasta: hasta, p_por: por }));
       return (r || []).map((f) => ({ clave: f.clave, etiqueta: f.clave, facturas: Number(f.documentos), neto: Number(f.sin_iva), iva: Number(f.iva), total: Number(f.con_iva) }));
     },
+    // ---------- Avisos en el telefono ----------
+    async avisosEstado() {
+      await exigirAdmin();
+      const motivo = motivoNoDisponible(), sub = await suscripcionActual();
+      if (!sub) return { motivo, activo: false, prefs: {} };
+      const r = ok(await db().rpc('push_estado', { p_endpoint: sub.endpoint }));
+      return { motivo: motivo === 'bloqueado' ? motivo : '', activo: !!r?.activo, prefs: r?.prefs || {} };
+    },
+    async avisosActivar() {
+      await exigirAdmin();
+      const sub = await crearSuscripcion(CONFIG.vapid);
+      if (!sub) return { motivo: 'bloqueado', activo: false, prefs: {} };
+      const d = datosDe(sub);
+      ok(await db().rpc('push_guardar', { p_endpoint: d.endpoint, p_p256dh: d.p256dh, p_auth: d.auth, p_agente: navigator.userAgent }));
+      return { motivo: '', activo: true, prefs: {} };
+    },
+    async avisosDesactivar() {
+      await exigirAdmin();
+      const sub = await suscripcionActual(); if (!sub) return;
+      ok(await db().rpc('push_quitar', { p_endpoint: sub.endpoint }));
+      await sub.unsubscribe();
+    },
+    async avisosGuardarPrefs(prefs) {
+      await exigirAdmin();
+      const sub = await suscripcionActual(); if (!sub) return prefs;
+      ok(await db().rpc('push_prefs_guardar', { p_endpoint: sub.endpoint, p_prefs: prefs }));
+      return prefs;
+    },
+    async avisosProbar() { await exigirAdmin(); ok(await db().rpc('push_prueba')); },
     async ventasSuscribir(cb) { await exigirAdmin(); const t = setInterval(() => cb({ tipo: 'pulso' }), 20000); return () => clearInterval(t); },
     // ---------- Inicio de Dixia ----------
     async viajes() {

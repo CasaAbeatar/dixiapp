@@ -1,6 +1,6 @@
 import { datos } from './datos/index.js';
 import { leerMonto, aplicarTema, esc } from './ui.js';
-import { vistaPin, vistaEntrada, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas } from './vistas.js';
+import { vistaPin, vistaEntrada, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas, MINIMOS_EFECTIVO } from './vistas.js';
 import { resultadosBusqueda, vistaCompras } from './vistas-compras.js';
 import { vistaInicio, diasHasta } from './vistas-inicio.js';
 import { mensajeDelDia } from './mensajes.js';
@@ -71,7 +71,8 @@ async function construir() {
   } else if (s.pestana === 'Bodega' && esAdmin()) {
     contenido = await construirBodega(datos, s.bodega, hoy); titulo = { nombre: 'Bodega' };
   } else {
-    contenido = vistaMas({ usuario: s.usuario, tema: s.tema, esAdmin: esAdmin(), esPrueba: datos.esPrueba, conBloqueo: !datos.esPrueba, negocios: s.negocios });
+    if (esAdmin()) s.avisos = await datos.avisosEstado().catch(() => null);
+    contenido = vistaMas({ usuario: s.usuario, tema: s.tema, esAdmin: esAdmin(), esPrueba: datos.esPrueba, conBloqueo: !datos.esPrueba, negocios: s.negocios, avisos: esAdmin() ? s.avisos : null });
     titulo = s.negocios.find((n) => n.id === s.negocioId);
   }
   s.error = '';
@@ -243,6 +244,11 @@ raiz.addEventListener('click', async (ev) => {
     if (a === 'negocio') { s.negocioId = v; escribirLS('dixiapp.negocio', v); Object.assign(s, { form: null, limite: 7, fecha: null, aviso: '', cierre: null, corrigiendo: null }); return pintar(); }
     if (a === 'tema') { s.tema = v; escribirLS('dixiapp.tema', v); aplicarTema(v); return pintar(); }
     if (a === 'restablecer') { await datos.restablecerPrueba(); s.aviso = ''; return pintar(); }
+    if (a === 'avisos-activar') { s.avisos = await datos.avisosActivar(); return pintar(); }
+    if (a === 'avisos-desactivar') { await datos.avisosDesactivar(); return pintar(); }
+    if (a === 'avisos-probar') { await datos.avisosProbar(); return pintar(); }
+    if (a === 'aviso-pref') { const p = { ...(s.avisos?.prefs || {}) }; p[v] = !(p[v] ?? true); await datos.avisosGuardarPrefs(p); return pintar(); }
+    if (a === 'aviso-min') { const p = { ...(s.avisos?.prefs || {}) }; const i = MINIMOS_EFECTIVO.indexOf(Number(p.efectivo_minimo || 0)); p.efectivo_minimo = MINIMOS_EFECTIVO[(i + 1) % MINIMOS_EFECTIVO.length]; await datos.avisosGuardarPrefs(p); return pintar(); }
     if (a === 'mas-cierres') { s.limite += 7; return pintar(); }
     if (a === 'ir-bodega') { s.bodega.seccion = v; s.pestana = 'Bodega'; await pintar(); return void window.scrollTo(0, 0); }
     if (a === 'dif-abrir') { s.resolviendo = v; s.notaDif = ''; return pintar(); }
@@ -375,6 +381,8 @@ async function cerrar(confirmar) {
 
 async function iniciar() {
   try { await evaluarAcceso(); } catch (e) { s.errorPin = e.message; }
+  const destino = { '#ventas': 'Ventas', '#cierres': 'Cierres' }[location.hash]; // al tocar un aviso se abre la pantalla que corresponde
+  if (destino && s.usuario && esAdmin()) s.pestana = destino;
   await pintar();
 }
 iniciar();
