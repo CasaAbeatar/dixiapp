@@ -40,6 +40,7 @@ export const METODOS = [
   'resumenSemana',        // (negocioId) => { dias:[{fecha,entradas,salidas,neto}], entradas, salidas, neto } [administrador]
   // Compras (solo administradores)
   'comprasProveedores',   // ({negocios}) => [{cedula, nombre}]
+  'comprasLineas',        // (clave) => [{linea, detalle, cantidad, unidad, precioUnitario, subtotal, impuesto, total}] (solo lectura)
   'comprasUltimas',       // ({negocios, proveedor, limite}) => Compra[] (mas reciente primero)
   'comprasResumen',       // ({negocios, proveedor}) => { hoy, semana, mes } cada uno { facturas, neto, iva, total }
   'comprasAgrupadas',     // ({negocios, desde, hasta, por, proveedor}) => [{clave, etiqueta, facturas, neto, iva, total}]

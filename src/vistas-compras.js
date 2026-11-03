@@ -65,8 +65,16 @@ function tarjetaResumen(titulo, r) {
 const NEGOCIO = { soda: 'Soda', pollos: 'Pollos' };
 function insigniaEstado(e) { return `<span class="insignia ${e === 'aceptada' || e === 'aceptada_parcial' ? 'cuadra' : e === 'pendiente' || e === 'sin_respuesta' ? 'neutra' : 'falta'}">${ESTADOS_COMPRA[e] || esc(e)}</span>`; }
 
-function filaFactura(c, abierta) {
-  const detalle = abierta ? `<div class="detalle">
+function lineasHtml(c, lineas) {
+  if (!lineas) return '<div class="lineas-fac"><b>Lo que se compró</b><p class="pie">Cargando las líneas…</p></div>';
+  if (!lineas.length) return '<div class="lineas-fac"><b>Lo que se compró</b><p class="pie">Esta factura no trae líneas.</p></div>';
+  const cant = (x) => String(Math.round(x * 1000) / 1000).replace('.', ',');
+  return `<div class="lineas-fac"><b>Lo que se compró</b><ul class="lista">${lineas.map((l) => `<li class="lin-f"><span class="lin-d">${esc(l.detalle)}</span>
+      <span class="lin-c num">${cant(l.cantidad)} ${esc(l.unidad)} × ${dinero(l.precioUnitario, c.moneda)}</span><b class="lin-t num">${dinero(l.total, c.moneda)}</b></li>`).join('')}</ul></div>`;
+}
+
+function filaFactura(c, abierta, lineas) {
+  const detalle = abierta ? `${lineasHtml(c, lineas)}<div class="detalle">
       <div class="fila"><span class="etq">Neto, sin IVA</span><b class="num">${dinero(c.neto, c.moneda)}</b></div>
       <div class="fila"><span class="etq">IVA</span><b class="num">${dinero(c.iva, c.moneda)}</b></div>
       <div class="fila total"><span>Total, con IVA incluido</span><b class="num">${dinero(c.total, c.moneda)}</b></div>
@@ -92,7 +100,7 @@ function barrasDesglose(titulo, filas, nombre = (x) => x, nota = '') {
   return `<section class="tarjeta"><h2>${titulo}</h2><ul class="lista">${cuerpo}</ul>${nota ? `<p class="pie">${nota}</p>` : ''}</section>`;
 }
 
-export function vistaCompras({ hoy, negociosPermitidos, filtro, proveedores, resumen, ultimas, por, grafico, rango, tipos, rubros, provs, abierta, vivo, error }) {
+export function vistaCompras({ lineas, hoy, negociosPermitidos, filtro, proveedores, resumen, ultimas, por, grafico, rango, tipos, rubros, provs, abierta, vivo, error }) {
   const opcionesNeg = [['ambos', 'Ambos'], ...negociosPermitidos.map((n) => [n.id, n.nombre.replace(' La Bomba', '')])];
   const fichasNeg = opcionesNeg.length > 2
     ? `<div class="fichas" role="group" aria-label="Negocio">${opcionesNeg.map(([k, t]) => `<button class="ficha" data-accion="filtro-negocio" data-valor="${k}" aria-pressed="${filtro.neg === k}">${t}</button>`).join('')}</div>` : '';
@@ -100,7 +108,7 @@ export function vistaCompras({ hoy, negociosPermitidos, filtro, proveedores, res
   let facturas = '', ultimoDia = '';
   for (const c of ultimas) {
     if (c.dia !== ultimoDia) { ultimoDia = c.dia; facturas += `<li class="separador-dia">${c.dia === hoy ? 'Hoy, ' : ''}${esc(fechaLarga(c.dia))}</li>`; }
-    facturas += filaFactura(c, abierta === c.clave);
+    facturas += filaFactura(c, abierta === c.clave, lineas && lineas[c.clave]);
   }
   return `${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
     <div class="barra-filtros">${fichasNeg}${selProv}</div>

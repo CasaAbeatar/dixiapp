@@ -249,6 +249,11 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
       const r = await rpcAgrupada({ negocios, desde, hasta: h, por: 'proveedor' });
       return r.map((f) => ({ cedula: f.clave, nombre: f.etiqueta })).sort((a, b) => a.nombre.localeCompare(b.nombre));
     },
+    async comprasLineas(clave) {
+      await exigirAdmin();
+      const r = ok(await db().rpc('compras_lineas', { p_clave: clave }));
+      return (r || []).map((l) => ({ linea: l.linea, detalle: l.detalle || '', cantidad: num(l.cantidad), unidad: l.unidad || '', precioUnitario: num(l.precio_unitario), subtotal: num(l.subtotal), impuesto: num(l.impuesto), total: num(l.total) }));
+    },
     async comprasUltimas({ negocios, proveedor = null, limite = 8 } = {}) {
       await exigirAdmin();
       let q = db().from('compras_v').select('*');

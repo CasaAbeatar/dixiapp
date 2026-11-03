@@ -333,3 +333,9 @@ body { background:
 .pestana { min-height: 52px; border: 0; border-radius: 999px; font-weight: 600; }
 .pestana[aria-current="page"] { background: var(--texto); color: var(--fondo); border: 0; }
 @media (max-width: 420px) { .pestana { font-size: 15px; padding: 0 2px; } }
+.lineas-fac { padding: 6px 0 10px; }
+.lineas-fac > b { display: block; margin-bottom: 4px; }
+.lin-f { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 8px 0; border-top: 1px solid var(--linea); }
+.lin-d { grid-column: 1 / -1; font-weight: 600; }
+.lin-c { color: var(--suave); font-size: 14px; }
+.lin-t { text-align: right; }
