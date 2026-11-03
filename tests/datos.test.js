@@ -371,3 +371,19 @@ test('avisos del telefono: la pantalla ofrece el interruptor de cambio de precio
   assert.equal(new Set(claves).size, claves.length);
   for (const t of TIPOS_AVISO) assert.ok(t[1] && t[2], `texto completo para ${t[0]}`);
 });
+
+test('capa mixta: caja, ventas y cierres salen de ejemplo; compras y bodega siguen siendo las reales', async () => {
+  const { crearDatosMixto } = await import('../web/src/datos/mixto.js');
+  const llamadas = [];
+  const real = { esPrueba: false, acceso: 'pin', comprasResumen: async () => { llamadas.push('real:comprasResumen'); return { real: true }; }, bodegaAlertas: async () => { llamadas.push('real:bodegaAlertas'); return { real: true }; },
+    cerrarSesion: async () => { llamadas.push('real:cerrarSesion'); }, bloquear: async () => {} };
+  const d = crearDatosMixto(real, { almacen: (() => { const m = new Map(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) }; })() });
+  assert.equal(d.esPrueba, false); assert.equal(d.ejemplo, true);
+  assert.equal(d.esEjemploEn('Caja'), true); assert.equal(d.esEjemploEn('Inicio'), true); assert.equal(d.esEjemploEn('Compras'), false); assert.equal(d.esEjemploEn('Bodega'), false);
+  assert.deepEqual(await d.comprasResumen({}), { real: true }); assert.deepEqual(await d.bodegaAlertas(), { real: true });
+  const caja = await d.cajaActual('soda'); assert.ok(caja);
+  const vivo = await d.ventasEnVivo({ negocios: ['soda', 'pollos'] }); assert.ok(vivo.negocios.length >= 1);
+  const { items } = await d.cierres('soda', { limite: 3 }); assert.ok(items.length >= 1);
+  assert.ok((await d.resumenSemana('soda')).dias.length >= 1);
+  await d.cerrarSesion(); assert.ok(llamadas.includes('real:cerrarSesion'));
+});

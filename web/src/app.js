@@ -34,7 +34,7 @@ async function pintar() {
     // Primer vistazo inmediato: el saludo y el mensaje salen enseguida y los numeros se llenan al llegar
     if (s.usuario && s.pestana === 'Inicio' && esAdmin() && !s.inicioListo) {
       const hh = new Date().getHours();
-      raiz.innerHTML = marco({ negocio: { nombre: 'Inicio' }, hoy: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Costa_Rica' }), pestana: 'Inicio', pestanas: pestanasDe(), esPrueba: datos.esPrueba,
+      raiz.innerHTML = marco({ negocio: { nombre: 'Inicio' }, hoy: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Costa_Rica' }), pestana: 'Inicio', pestanas: pestanasDe(), esPrueba: datos.esPrueba || !!datos.esEjemploEn?.('Inicio'), etiqueta: datos.esPrueba ? 'Datos de prueba' : 'Caja y ventas de ejemplo',
         contenido: `<section class="ini"><h2 class="ini-h">${hh < 12 ? 'Buenos días' : hh < 19 ? 'Buenas tardes' : 'Buenas noches'}, Dixia</h2><p class="ini-msg">${esc(mensajeDelDia().texto)}</p><p class="ini-vacio">Cargando tus números…</p></section>` });
     }
     const html = await construir();
@@ -76,7 +76,7 @@ async function construir() {
     titulo = s.negocios.find((n) => n.id === s.negocioId);
   }
   s.error = '';
-  return marco({ negocio: titulo, hoy, pestana: s.pestana, pestanas: pestanasDe(), contenido, esPrueba: datos.esPrueba });
+  return marco({ negocio: titulo, hoy, pestana: s.pestana, pestanas: pestanasDe(), contenido, esPrueba: datos.esPrueba || !!datos.esEjemploEn?.(s.pestana), etiqueta: datos.esPrueba ? 'Datos de prueba' : s.pestana === 'Inicio' ? 'Caja y ventas de ejemplo' : 'Datos de ejemplo' });
 }
 
 async function construirInicio(hoy) {
