@@ -1,8 +1,7 @@
 // Vistas: reciben datos ya listos y devuelven HTML. No leen ni escriben datos.
 import { esc } from './ui.js';
-import { colones, colonesConSigno } from './datos/formato.js';
-import { fechaLarga, diaCorto, horaLegible } from './datos/fechas.js';
-import { estadoDiferencia } from './datos/calculos.js';
+import { colones } from './datos/formato.js';
+import { fechaLarga, horaLegible } from './datos/fechas.js';
 
 const miles = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 const boton = (accion, texto, clases = '', extra = '') => `<button class="btn ${clases}" data-accion="${accion}" ${extra}>${texto}</button>`;
@@ -68,19 +67,14 @@ export function selectorNegocio(negocios, negocioId) {
 }
 
 // ---------- Caja ----------
-function listaMovs(movs, { puedeCorregir, corrigiendo }) {
+function listaMovs(movs) {
   if (!movs.length) return '<p class="vacio">No hubo movimientos de efectivo este día.</p>';
   return `<ul class="lista">${movs.map((m) => {
     const marca = m.corrigeA ? '<span class="insignia neutra">Corrección</span> ' : m.corregido ? '<span class="insignia neutra">Corregido</span> ' : '';
-    const accion = puedeCorregir && !m.corrigeA && !m.corregido
-      ? (corrigiendo === m.id
-        ? `<div class="confirmar-corr"><span>Se registrará un contramovimiento de ${colones(m.monto)} para anular este.</span>
-            <div class="acciones">${boton('cancelar-corr', 'Cancelar')}${boton('confirmar-corr', 'Confirmar corrección', 'primario', `data-valor="${esc(m.id)}"`)}</div></div>`
-        : `<button class="enlace" data-accion="corregir" data-valor="${esc(m.id)}">Corregir</button>`) : '';
     return `<li class="mov">
       <div>${marca}<span class="insignia ${m.tipo}">${m.tipo === 'entrada' ? 'Entrada' : 'Salida'}</span> <b>${esc(m.motivo)}</b></div>
       <div class="monto num">${m.tipo === 'entrada' ? '+' : '-'}${colones(m.monto)}</div>
-      <div class="sub">${horaLegible(m.hora)} · ${esc(m.registradoPor)}${m.nota ? ' · ' + esc(m.nota) : ''}</div>${accion ? `<div class="sub">${accion}</div>` : ''}</li>`;
+      <div class="sub">${horaLegible(m.hora)} · ${esc(m.registradoPor)}${m.nota ? ' · ' + esc(m.nota) : ''}</div></li>`;
   }).join('')}</ul>`;
 }
 
@@ -89,7 +83,7 @@ function quienCajas(cajas) {
   return cajas.map((c) => `<div class="fila"><span class="etq">Caja</span><span style="text-align:right">Abrió <b>${esc(c.abiertaPor)}</b> a las ${horaLegible(c.abiertaA)}${c.estado === 'cerrada' ? `<br>Cerró <b>${esc(c.cerradaPor)}</b> a las ${horaLegible(c.cerradaA)}` : '<br><span class="ok">Sigue abierta</span>'}</span></div>`).join('');
 }
 
-export function vistaCaja({ hoy, fecha, caja, act, esAdmin, form, sugerencias, aviso, error, fondo, corrigiendo, cierre }) {
+export function vistaCaja({ hoy, fecha, caja, act, esAdmin, aviso, error, fondo, cierre }) {
   const esHoy = fecha === hoy;
   const nav = `<div class="nav-fecha"><button class="btn" data-accion="dia-menos" aria-label="Día anterior">‹</button>
     <div class="nav-fecha-t"><b>${esHoy ? 'Hoy, ' : ''}${esc(fechaLarga(fecha))}</b>${esHoy ? '' : boton('dia-hoy', 'Volver a hoy', 'enlace-btn')}</div>
@@ -113,11 +107,7 @@ export function vistaCaja({ hoy, fecha, caja, act, esAdmin, form, sugerencias, a
         ${esAdmin ? `<div class="fila"><span class="etq">Fondo inicial</span><b class="num">${colones(caja.fondoInicial)}</b></div>
           <div class="fila"><span class="etq">Ventas en efectivo (del facturador)</span><b class="num">+${colones(caja.ventas.efectivo)}</b></div>
           <div class="fila"><span class="etq">Entradas</span><b class="num">+${colones(caja.entradas)}</b></div>
-          <div class="fila"><span class="etq">Salidas</span><b class="num">-${colones(caja.salidas)}</b></div>` : '<p class="pie">Anote cada entrada y salida de efectivo. Al terminar, cuente el efectivo y cierre la caja.</p>'}</section>
-        <div class="dos-botones" style="margin-top:14px">
-          <button class="btn enorme ${form?.tipo === 'salida' ? 'activo' : ''}" data-accion="abrir-form" data-valor="salida">Salida<small>Dinero que sale de la caja</small></button>
-          <button class="btn enorme ${form?.tipo === 'entrada' ? 'activo' : ''}" data-accion="abrir-form" data-valor="entrada">Entrada<small>Dinero que entra a la caja</small></button></div>
-        ${form ? formulario(form, sugerencias) : ''}`;
+          <div class="fila"><span class="etq">Salidas</span><b class="num">-${colones(caja.salidas)}</b></div>` : '<p class="pie">Las entradas y salidas de efectivo se ven abajo, en la actividad. Al terminar, cuente el efectivo y cierre la caja.</p>'}</section>`;
     }
   }
   const cierreHtml = esHoy && abierta && !esAdmin ? `<h2 class="titulo-seccion">Cerrar la caja</h2><section class="tarjeta" id="cierre">
@@ -129,51 +119,8 @@ export function vistaCaja({ hoy, fecha, caja, act, esAdmin, form, sugerencias, a
       <p class="pie">Quedará guardado quién cierra y a qué hora.</p></section>` : '';
   return `${nav}${aviso ? `<p class="aviso" role="status">${esc(aviso)}</p>` : ''}${!esHoy && error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}${panel}${cierreHtml}
     <h2 class="titulo-seccion">Actividad ${esHoy ? 'de hoy' : 'del día'}</h2>
-    <section class="tarjeta">${quienCajas(act.cajas)}${listaMovs(act.movimientos, { puedeCorregir: abierta, corrigiendo })}
-      ${act.movimientos.length ? '<p class="pie">Los movimientos no se borran: un error se corrige con un contramovimiento.</p>' : ''}</section>`;
-}
-
-function formulario(form, sugerencias) {
-  const esSalida = form.tipo === 'salida';
-  return `<section class="tarjeta" style="margin-top:14px" id="formulario"><h2>${esSalida ? 'Registrar salida de efectivo' : 'Registrar entrada de efectivo'}</h2>
-    ${form.error ? `<p class="error" role="alert">${esc(form.error)}</p>` : ''}
-    <label class="campo"><span>Monto</span><div class="monto-wrap"><b>₡</b><input id="f-monto" inputmode="numeric" autocomplete="off" placeholder="0" value="${esc(form.monto)}"></div></label>
-    <label class="campo"><span>Motivo <small>(escríbalo o toque una sugerencia)</small></span><input type="text" id="f-motivo" autocomplete="off" maxlength="120" value="${esc(form.motivo)}"></label>
-    <div class="fichas" style="margin:-6px 0 16px">${sugerencias.map((m) => `<button type="button" class="ficha" data-accion="motivo" data-valor="${esc(m)}" aria-pressed="${form.motivo.toLowerCase() === m.toLowerCase()}">${esc(m)}</button>`).join('')}</div>
-    <label class="campo"><span>Nota <small>(opcional)</small></span><input type="text" id="f-nota" autocomplete="off" maxlength="300" value="${esc(form.nota)}"></label>
-    <div class="acciones">${boton('cancelar-form', 'Cancelar')}${boton('guardar-mov', `Guardar ${esSalida ? 'salida' : 'entrada'}`, 'primario')}</div></section>`;
-}
-
-// ---------- Cierres (solo administradores) ----------
-function difTexto(d) { const e = estadoDiferencia(d); return e.clave === 'cuadra' ? 'Cuadra' : `${e.texto} ${colones(Math.abs(d))}`; }
-function tarjetaCierre(c) {
-  const e = estadoDiferencia(c.diferencia ?? 0);
-  const v = c.ventas;
-  return `<section class="tarjeta">
-    <div class="cierre-cab"><h3>${esc(fechaLarga(c.fecha))}</h3><span class="insignia ${e.clave}">${difTexto(c.diferencia ?? 0)}</span></div>
-    <div class="fila"><span class="etq">Efectivo esperado</span><b class="num">${colones(c.esperado)}</b></div>
-    <div class="fila"><span class="etq">Efectivo contado</span><b class="num">${colones(c.contado)}</b></div>
-    <div class="fila"><span class="etq">Diferencia</span><b class="num ${c.diferencia < 0 ? 'mal' : 'ok'}">${colonesConSigno(c.diferencia ?? 0)}</b></div>
-    ${v ? `<div class="fila"><span class="etq">Ventas en efectivo</span><b class="num">${colones(v.efectivo)}</b></div>
-    <div class="fila"><span class="etq">Ventas con tarjeta</span><b class="num">${colones(v.tarjeta)}</b></div>
-    <div class="fila"><span class="etq">Ventas por SINPE</span><b class="num">${colones(v.sinpe)}</b></div>
-    <div class="fila"><span class="etq">Transferencias</span><b class="num">${colones(v.transferencia)}</b></div>` : ''}
-    <div class="pie">Abrió ${esc(c.abiertaPor)} a las ${horaLegible(c.abiertaA)} con ${colones(c.fondoInicial)}. Cerró ${esc(c.cerradaPor)} a las ${horaLegible(c.cerradaA)}.</div></section>`;
-}
-
-export function vistaCierres({ cierres, hayMas, semana }) {
-  const semanaHtml = `<h2 class="titulo-seccion">Movimientos de efectivo, esta semana</h2>
-    <section class="tarjeta"><div class="etq">Neto de la semana (entradas menos salidas)</div>
-      <div class="grande num" style="font-size:36px;margin-bottom:4px" data-id="neto-semana">${colonesConSigno(semana.neto)}</div>
-      <table class="tabla"><thead><tr><th>Día</th><th>Entradas</th><th>Salidas</th><th>Neto</th></tr></thead><tbody>
-      ${semana.dias.map((d) => `<tr><td>${esc(diaCorto(d.fecha))}</td><td class="num">${colones(d.entradas)}</td><td class="num">${colones(d.salidas)}</td><td class="num">${colonesConSigno(d.neto)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td>Semana</td><td class="num">${colones(semana.entradas)}</td><td class="num">${colones(semana.salidas)}</td><td class="num">${colonesConSigno(semana.neto)}</td></tr></tfoot></table>
-      <p class="pie">Cifras netas de movimientos de efectivo, sin ventas. Los días van en orden, el lunes primero.</p></section>`;
-  return `<h2 class="titulo-seccion">Cierres, del más reciente al más antiguo</h2>
-    <div class="cuadricula dos">${cierres.map(tarjetaCierre).join('') || '<p class="vacio">Aún no hay cierres.</p>'}</div>
-    ${hayMas ? boton('mas-cierres', 'Ver cierres anteriores', 'bloque', 'style="margin-top:14px"') : '<p class="pie">No hay más cierres.</p>'}
-    <p class="pie">Ventas por medio de pago tomadas del facturador, netas de notas de crédito. La diferencia es contado menos esperado.</p>
-    ${semanaHtml}`;
+    <section class="tarjeta">${quienCajas(act.cajas)}${listaMovs(act.movimientos)}
+      <p class="pie">Solo consulta: las entradas y salidas de efectivo se registran en el facturador.</p></section>`;
 }
 
 // ---------- Más ----------

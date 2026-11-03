@@ -23,10 +23,6 @@ const HORARIOS = [
   { negocioId: 'pollos', servicio: 'Pollos', texto: '10:00 a. m. a 10:00 p. m.' },
   { negocioId: 'pollos', servicio: 'Papea', texto: '10:00 a. m. a 10:00 p. m.' },
 ];
-const SEMILLA_MOTIVOS = {
-  salida: ['Proveedor', 'Gas', 'Hielo e insumos', 'Pago a personal', 'Transporte'],
-  entrada: ['Sencillo o cambio', 'Aporte de la gerencia', 'Devolución de proveedor'],
-};
 // Proveedores ficticios (nombres inventados)
 export const PROVEEDORES = [
   { cedula: '3-101-900001', nombre: 'Avícola Central S.A. (Pollos El Valle)', tipo: 'comida_preparada', iva: 0.01, rubros: [['Pollo', 'comida_preparada', 1]] },
@@ -202,10 +198,6 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
   const vistaMov = (e, m, cor) => ({ ...m, corregido: cor.has(m.id) });
   const orden = (c) => c.fecha + String(parseInt(c.id.split('-')[1], 10)).padStart(8, '0');
   const cajaAbierta = (e, negocioId) => e.cajas.find((c) => c.negocioId === negocioId && c.estado === 'abierta');
-  const aprender = (e, tipo, motivo) => {
-    const k = motivo.toLowerCase(); e.motivos[tipo] = e.motivos[tipo] || {};
-    const x = e.motivos[tipo][k] || { texto: motivo, usos: 0 }; x.usos++; e.motivos[tipo][k] = x;
-  };
   const comprasVisibles = (e, u, negocios) => {
     const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
     return e.compras.filter((c) => ids.includes(c.negocioId));
@@ -255,35 +247,6 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
         movimientos: e.movimientos.filter((m) => m.negocioId === negocioId && m.fecha === fecha).sort((a, b) => a.hora.localeCompare(b.hora)).map((m) => vistaMov(e, m, cor)),
       };
     },
-    async registrarMovimiento({ negocioId, tipo, monto, motivo, nota = '' }) {
-      const u = exigir(); exigirNegocio(u, negocioId);
-      if (!['entrada', 'salida'].includes(tipo)) throw new Error('Tipo de movimiento inválido');
-      if (!Number.isInteger(monto) || monto <= 0) throw new Error('El monto debe ser un número entero mayor que cero');
-      const mot = String(motivo || '').trim().replace(/\s+/g, ' ');
-      if (!mot) throw new Error('Falta el motivo');
-      const e = leer(); const caja = cajaAbierta(e, negocioId);
-      if (!caja) throw new Error('No hay una caja abierta en este negocio. Ábrala primero.');
-      const mov = { id: `mov-${e.siguiente++}`, cajaId: caja.id, negocioId, fecha: hoy(), hora: horaTexto(ahora()), tipo, monto, motivo: mot, nota: String(nota || '').trim(), registradoPor: u.nombre, corrigeA: null };
-      e.movimientos.push(mov); aprender(e, tipo, mot); guardar(e); oyentesMov.forEach((f) => { try { f({ ...mov, corregido: false }); } catch { /* oyente roto */ } }); return { ...mov, corregido: false };
-    },
-    async corregirMovimiento(id, { nota = '' } = {}) {
-      const u = exigir(); const e = leer();
-      const o = e.movimientos.find((m) => m.id === id);
-      if (!o) throw new Error('El movimiento no existe');
-      exigirNegocio(u, o.negocioId);
-      if (o.corrigeA) throw new Error('Una corrección no se puede corregir');
-      if (corregidos(e).has(id)) throw new Error('Ese movimiento ya fue corregido.');
-      const caja = cajaAbierta(e, o.negocioId);
-      if (!caja) throw new Error('No hay una caja abierta para registrar la corrección. Ábrala primero.');
-      const mov = { id: `mov-${e.siguiente++}`, cajaId: caja.id, negocioId: o.negocioId, fecha: hoy(), hora: horaTexto(ahora()), tipo: o.tipo === 'entrada' ? 'salida' : 'entrada', monto: o.monto, motivo: `Corrección: ${o.motivo}`.slice(0, 120), nota: String(nota || '').trim(), registradoPor: u.nombre, corrigeA: id };
-      e.movimientos.push(mov); guardar(e); return { ...mov, corregido: false };
-    },
-    async sugerenciasMotivos(tipo) {
-      exigir(); const e = leer(); const apr = e.motivos[tipo] || {};
-      const lista = new Map(SEMILLA_MOTIVOS[tipo].map((t) => [t.toLowerCase(), { texto: t, usos: 0 }]));
-      for (const [k, v] of Object.entries(apr)) lista.set(k, v);
-      return [...lista.values()].sort((a, b) => b.usos - a.usos || a.texto.localeCompare(b.texto)).slice(0, 8).map((x) => x.texto);
-    },
     async cerrarCaja(negocioId, { contado, confirmarFaltante = false }) {
       const u = exigir(); exigirNegocio(u, negocioId);
       if (u.rol === 'administrador') throw new Error('El cierre y la apertura de caja los hacen las cajeras en el facturador, no en esta app.');
@@ -301,6 +264,23 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
       const u = exigirAdmin(); exigirNegocio(u, negocioId); const e = leer();
       const todos = e.cajas.filter((c) => c.negocioId === negocioId && c.estado === 'cerrada').sort((a, b) => orden(b).localeCompare(orden(a)));
       return { items: todos.slice(0, limite).map((c) => ({ ...vistaCaja(e, c, true) })), hayMas: todos.length > limite };
+    },
+    // Cierres de caja del facturador (en la prueba salen de las cajas ficticias). Un turno abierto no trae cifras.
+    async cierresTurnos({ negocios, desde = null, hasta = null, limite = 120 } = {}) {
+      const u = exigirAdmin(); const e = leer();
+      const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
+      const todos = e.cajas.filter((c) => ids.includes(c.negocioId) && (!desde || c.fecha >= desde) && (!hasta || c.fecha <= hasta))
+        .sort((a, b) => (b.fecha + (b.cerradaA || '99:99') + b.id).localeCompare(a.fecha + (a.cerradaA || '99:99') + a.id));
+      const turnos = todos.slice(0, limite).map((c) => {
+        const base = { id: c.id, negocioId: c.negocioId, terminal: 1, estado: c.estado === 'cerrada' ? 'cerrado' : 'abierto', dia: c.fecha, abiertoPor: c.abiertaPor, abiertoDia: c.fecha, abiertoHora: c.abiertaA };
+        if (c.estado !== 'cerrada') return base;
+        const movs = e.movimientos.filter((m) => m.cajaId === c.id), t = totalesMovimientos(movs);
+        const lista = (tipo) => movs.filter((m) => m.tipo === tipo).map((m) => ({ motivo: m.motivo, monto: m.monto, hora: m.hora, por: m.registradoPor }));
+        const total = Object.values(c.ventas).reduce((a, x) => a + x, 0);
+        return { ...base, numero: Number(String(c.id).split('-')[1]), cerradoPor: c.cerradaPor, cerradoHora: c.cerradaA, fondo: c.fondoInicial, entradas: t.entradas, salidas: t.salidas, devolucionesEfectivo: 0, cobrosNotaDebito: 0,
+          ventas: { ...c.ventas, otros: 0 }, totalVentas: total, ventasNetas: total, esperado: c.esperado, contado: c.contado, diferencia: c.contado - c.esperado, nota: '', movEntradas: lista('entrada'), movSalidas: lista('salida') };
+      });
+      return { generado: ahora().toISOString(), hoy: hoy(), hayMas: todos.length > limite, turnos };
     },
     async resumenSemana(negocioId) {
       const u = exigirAdmin(); exigirNegocio(u, negocioId); const e = leer();

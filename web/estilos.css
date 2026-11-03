@@ -367,3 +367,18 @@ body { background:
 /* Pantalla de bienvenida de 2 segundos sobre toda la app */
 #splash { position: fixed; inset: 0; z-index: 9999; opacity: 1; transition: opacity .35s ease; }
 #splash.sale { opacity: 0; pointer-events: none; }
+
+/* Cierres de caja del facturador: lista compacta por dia, detalle al tocar un turno */
+.tn-lista { margin-top: 10px; }
+.tn { border-top: 1px solid var(--linea); }
+.tn:first-child { border-top: 0; }
+.tn-fila { width: 100%; text-align: left; background: none; border: 0; padding: 12px 0 8px; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: start; }
+.tn-izq { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; min-width: 0; }
+.tn-quien { flex: 1 1 100%; font-size: 14px; }
+.tn-der { display: grid; justify-items: end; gap: 4px; text-align: right; }
+.tn-ver { grid-column: 1 / -1; color: var(--acento); font-weight: 600; font-size: 15px; min-height: 28px; }
+.tn-detalle { background: var(--fondo); border-radius: 12px; padding: 4px 14px 10px; margin: 0 0 10px; }
+.tn-detalle .fila:first-child { border-top: 0; }
+.tn-sub { margin: 14px 0 0; font-size: 14px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--suave); }
+.tn-movs { margin-top: 12px; border-top: 1px solid var(--linea-fuerte); padding-top: 8px; }
+.tn-dia .cierre-cab h3 { text-transform: capitalize; }

@@ -1,10 +1,11 @@
 import { datos } from './datos/index.js';
 import { leerMonto, aplicarTema, esc } from './ui.js';
-import { vistaPin, vistaEntrada, vistaSplash, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas, MINIMOS_EFECTIVO } from './vistas.js';
+import { vistaPin, vistaEntrada, vistaSplash, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaMas, MINIMOS_EFECTIVO } from './vistas.js';
+import { vistaCierresTurnos } from './vistas-cierres.js';
 import { resultadosBusqueda, vistaCompras } from './vistas-compras.js';
 import { vistaInicio, diasHasta } from './vistas-inicio.js';
 import { mensajeDelDia } from './mensajes.js';
-import { fechaLarga, lunesDe } from './datos/fechas.js';
+import { fechaLarga, lunesDe, sumarDias } from './datos/fechas.js';
 import { colones } from './datos/formato.js';
 import { estadoDiferencia, diferencia } from './datos/calculos.js';
 import { construirBodega, accionBodega, entradaBodega, despuesDePintar, estadoBodega } from './bodega.js';
@@ -19,8 +20,8 @@ const miles = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 const s = {
   acceso: 'sin_sesion', usuario: null, negocios: [], negocioId: null, pestana: 'Caja', tema: leerLS('dixiapp.tema', 'auto'),
   pin: '', pin1: '', faseCrear: 'nuevo', errorPin: '', correo: '', errorCorreo: '', cargando: false,
-  fecha: null, form: null, aviso: '', error: '', fondo: '', cierre: null, corrigiendo: null, limite: 7,
-  filtro: { neg: 'ambos', proveedor: '', busca: '', rubro: '', periodo: 'ultimas' }, bodega: estadoBodega(), viaje: null, viajeForm: null, resolviendo: null, notaDif: '', avisoEfectivo: '', por: 'dia', abierta: null, ventasPor: 'dia', filtroVentas: { neg: 'ambos' }, lineasFac: {}, vivo: false, ultimo: Date.now(), esperado: 0,
+  fecha: null, aviso: '', error: '', fondo: '', cierre: null, limite: 7,
+  filtro: { neg: 'ambos', proveedor: '', busca: '', rubro: '', periodo: 'ultimas' }, bodega: estadoBodega(), viaje: null, viajeForm: null, resolviendo: null, notaDif: '', avisoEfectivo: '', por: 'dia', abierta: null, ventasPor: 'dia', filtroVentas: { neg: 'ambos' }, filtroCierres: { neg: 'ambos' }, cierresDias: 30, turnosVer: {}, lineasFac: {}, vivo: false, ultimo: Date.now(), esperado: 0,
 };
 aplicarTema(s.tema);
 
@@ -60,10 +61,9 @@ async function construir() {
   } else if (s.pestana === 'Caja') {
     const [caja, act] = await Promise.all([datos.cajaActual(s.negocioId), datos.actividad(s.negocioId, s.fecha)]);
     s.esperado = caja?.esperado ?? 0;
-    contenido = selectorNegocio(s.negocios, s.negocioId) + vistaCaja({ hoy, fecha: s.fecha, caja, act, esAdmin: esAdmin(), form: s.form, sugerencias: s.form?.sug || [], aviso: s.aviso, error: s.error, fondo: s.fondo, corrigiendo: s.corrigiendo, cierre: s.cierre });
+    contenido = selectorNegocio(s.negocios, s.negocioId) + vistaCaja({ hoy, fecha: s.fecha, caja, act, esAdmin: esAdmin(), aviso: s.aviso, error: s.error, fondo: s.fondo, cierre: s.cierre });
   } else if (s.pestana === 'Cierres' && esAdmin()) {
-    const [{ items, hayMas }, semana] = await Promise.all([datos.cierres(s.negocioId, { limite: s.limite }), datos.resumenSemana(s.negocioId)]);
-    contenido = selectorNegocio(s.negocios, s.negocioId) + vistaCierres({ cierres: items, hayMas, semana });
+    contenido = await construirCierres(hoy); titulo = { nombre: 'Cierres de caja' };
   } else if (s.pestana === 'Ventas' && esAdmin()) {
     contenido = await construirVentas(hoy); titulo = { nombre: 'Ventas' };
   } else if (s.pestana === 'Compras' && esAdmin()) {
@@ -103,6 +103,12 @@ async function construirInicio(hoy) {
   }
   const h = new Date().getHours();
   return vistaInicio({ saludo: h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches', mensaje: mensajeDelDia().texto, negocios, decisiones, semana: compras.semana, viaje: s.viaje, viajeForm: s.viajeForm, movimientos: movs.map((m) => ({ ...m, negocio: nombreNeg(m.negocioId) })), aviso: s.avisoEfectivo, hoy });
+}
+
+async function construirCierres(hoy) {
+  const negs = s.filtroCierres.neg === 'ambos' ? null : [s.filtroCierres.neg];
+  const r = await datos.cierresTurnos({ negocios: negs, desde: sumarDias(hoy, -(s.cierresDias - 1)), hasta: hoy, limite: 300 });
+  return vistaCierresTurnos({ turnos: r.turnos, hoy, negociosPermitidos: s.negocios, filtro: s.filtroCierres, dias: s.cierresDias, hayMas: r.hayMas, error: s.error, abiertos: s.turnosVer });
 }
 
 async function construirVentas(hoy) {
@@ -158,7 +164,7 @@ async function entrarConUsuario(u) {
   s.usuario = u; s.negocios = await datos.negocios();
   const guardado = leerLS('dixiapp.negocio', '');
   s.negocioId = s.negocios.some((n) => n.id === guardado) ? guardado : s.negocios[0].id;
-  s.inicioListo = false; s.bodega = estadoBodega(); s.pestana = esAdmin() ? 'Inicio' : 'Caja'; s.fecha = null; s.pin = ''; s.pin1 = ''; s.errorPin = ''; s.form = null; s.cierre = null; s.aviso = ''; s.error = '';
+  s.inicioListo = false; s.bodega = estadoBodega(); s.pestana = esAdmin() ? 'Inicio' : 'Caja'; s.fecha = null; s.pin = ''; s.pin1 = ''; s.errorPin = ''; s.cierre = null; s.aviso = ''; s.error = '';
   suscribirCompras(); suscribirEfectivo(); suscribirVentas();
 }
 
@@ -248,10 +254,10 @@ raiz.addEventListener('click', async (ev) => {
     if (a === 'entrar') return intentarPin();
     if (a === 'otra-cuenta') { await datos.cerrarSesion(); await evaluarAcceso(); return pintar(); }
     if (a === 'reintentar') { s.error = ''; return pintar(); }
-    if (a === 'pestana') { s.pestana = v; s.aviso = ''; s.error = ''; s.cierre = null; s.corrigiendo = null; await pintar(); return void window.scrollTo(0, 0); }
-    if (a === 'salir') { await datos.cerrarSesion(); Object.assign(s, { usuario: null, form: null, aviso: '', pin: '' }); if (cancelarSuscripcion) { cancelarSuscripcion(); cancelarSuscripcion = null; } if (cancelarEfectivo) { cancelarEfectivo(); cancelarEfectivo = null; } await evaluarAcceso(); return pintar(); }
+    if (a === 'pestana') { s.pestana = v; s.aviso = ''; s.error = ''; s.cierre = null; await pintar(); return void window.scrollTo(0, 0); }
+    if (a === 'salir') { await datos.cerrarSesion(); Object.assign(s, { usuario: null, aviso: '', pin: '' }); if (cancelarSuscripcion) { cancelarSuscripcion(); cancelarSuscripcion = null; } if (cancelarEfectivo) { cancelarEfectivo(); cancelarEfectivo = null; } await evaluarAcceso(); return pintar(); }
     if (a === 'bloquear') { await datos.bloquear(); await evaluarAcceso(); return pintar(); }
-    if (a === 'negocio') { s.negocioId = v; escribirLS('dixiapp.negocio', v); Object.assign(s, { form: null, limite: 7, fecha: null, aviso: '', cierre: null, corrigiendo: null }); return pintar(); }
+    if (a === 'negocio') { s.negocioId = v; escribirLS('dixiapp.negocio', v); Object.assign(s, { limite: 7, fecha: null, aviso: '', cierre: null }); return pintar(); }
     if (a === 'tema') { s.tema = v; escribirLS('dixiapp.tema', v); aplicarTema(v); return pintar(); }
     if (a === 'restablecer') { await datos.restablecerPrueba(); s.aviso = ''; return pintar(); }
     if (a === 'avisos-activar') { s.avisos = await datos.avisosActivar(); return pintar(); }
@@ -259,7 +265,6 @@ raiz.addEventListener('click', async (ev) => {
     if (a === 'avisos-probar') { await datos.avisosProbar(); return pintar(); }
     if (a === 'aviso-pref') { const p = { ...(s.avisos?.prefs || {}) }; p[v] = !(p[v] ?? true); await datos.avisosGuardarPrefs(p); return pintar(); }
     if (a === 'aviso-min') { const p = { ...(s.avisos?.prefs || {}) }; const i = MINIMOS_EFECTIVO.indexOf(Number(p.efectivo_minimo || 0)); p.efectivo_minimo = MINIMOS_EFECTIVO[(i + 1) % MINIMOS_EFECTIVO.length]; await datos.avisosGuardarPrefs(p); return pintar(); }
-    if (a === 'mas-cierres') { s.limite += 7; return pintar(); }
     if (a === 'ir-bodega') { s.bodega.seccion = v; s.pestana = 'Bodega'; await pintar(); return void window.scrollTo(0, 0); }
     if (a === 'dif-abrir') { s.resolviendo = v; s.notaDif = ''; return pintar(); }
     if (a === 'dif-cancelar') { s.resolviendo = null; return pintar(); }
@@ -278,15 +283,12 @@ raiz.addEventListener('click', async (ev) => {
     if (a === 'dia-menos' || a === 'dia-mas') { s.fecha = sumarDiasTexto(s.fecha, a === 'dia-mas' ? 1 : -1); s.aviso = ''; return pintar(); }
     if (a === 'dia-hoy') { s.fecha = null; return pintar(); }
     if (a === 'abrir-caja') return abrirCaja();
-    if (a === 'abrir-form') { s.aviso = ''; s.form = { tipo: v, monto: '', motivo: '', nota: '', error: '', sug: await datos.sugerenciasMotivos(v) }; await pintar(); return void document.getElementById('formulario')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
-    if (a === 'cancelar-form') { s.form = null; return pintar(); }
-    if (a === 'motivo') { s.form.motivo = v; s.form.error = ''; await pintar(); return void document.getElementById('f-monto')?.focus(); }
-    if (a === 'guardar-mov') return guardarMovimiento();
-    if (a === 'corregir') { s.corrigiendo = v; return pintar(); }
-    if (a === 'cancelar-corr') { s.corrigiendo = null; return pintar(); }
-    if (a === 'confirmar-corr') { await datos.corregirMovimiento(v, {}); s.corrigiendo = null; s.aviso = 'Corrección registrada. El movimiento original queda a la vista.'; return pintar(); }
     if (a === 'cerrar-caja') return cerrar(v === 'confirmar');
     if (a === 'cancelar-cierre') { s.cierre = null; return pintar(); }
+    // Cierres de caja del facturador (solo consulta)
+    if (a === 'cierres-negocio') { s.filtroCierres.neg = v; s.turnosVer = {}; return pintar(); }
+    if (a === 'cierres-mas') { s.cierresDias += 30; return pintar(); }
+    if (a === 'turno-ver') { s.turnosVer = { ...s.turnosVer, [v]: !s.turnosVer[v] }; return pintar(); }
     // Ventas
     if (a === 'ventas-negocio') { s.filtroVentas.neg = v; return pintar(); }
     if (a === 'ventas-por') { s.ventasPor = v; return pintar(); }
@@ -305,16 +307,15 @@ raiz.addEventListener('click', async (ev) => {
       }
       return;
     }
-  } catch (e) { s.error = e.message; s.corrigiendo = null; pintar(); }
+  } catch (e) { s.error = e.message; pintar(); }
 });
 
 raiz.addEventListener('input', (ev) => {
   const id = ev.target.id;
   if (s.usuario && s.pestana === 'Bodega' && entradaBodega(ev, raiz, s.bodega)) return;
-  if (['f-monto', 'c-contado', 'a-fondo'].includes(id)) {
+  if (['c-contado', 'a-fondo'].includes(id)) {
     const n = leerMonto(ev.target.value);
     ev.target.value = n === null ? '' : miles(n);
-    if (id === 'f-monto') s.form.monto = ev.target.value;
     if (id === 'a-fondo') s.fondo = ev.target.value;
     if (id === 'c-contado') actualizarDif();
   }
@@ -322,8 +323,6 @@ raiz.addEventListener('input', (ev) => {
   if (id === 'd-nota') s.notaDif = ev.target.value;
   if (id === 'v-destino' && s.viajeForm) s.viajeForm.destino = ev.target.value;
   if (id === 'v-fecha' && s.viajeForm) s.viajeForm.fecha = ev.target.value;
-  if (id === 'f-motivo') s.form.motivo = ev.target.value;
-  if (id === 'f-nota') s.form.nota = ev.target.value;
   if (id === 'a-pin') {
     s.pin = ev.target.value.replace(/\D/g, '').slice(0, 4); ev.target.value = s.pin; s.errorPin = '';
     if (s.pin.length === 4) intentarPin();
@@ -374,19 +373,6 @@ async function abrirCaja() {
   try { await datos.abrirCaja(s.negocioId, { fondoInicial: fondo }); s.aviso = `Caja abierta con un fondo de ${colones(fondo)}.`; s.fondo = ''; s.error = ''; }
   catch (e) { s.error = e.message; }
   pintar();
-}
-
-async function guardarMovimiento() {
-  const f = s.form; f.error = ''; const monto = leerMonto(f.monto); const motivo = f.motivo.trim();
-  if (!monto) f.error = 'Escriba el monto en colones.';
-  else if (!motivo) f.error = 'Escriba el motivo o toque una sugerencia.';
-  if (f.error) { await pintar(); return; }
-  try {
-    await datos.registrarMovimiento({ negocioId: s.negocioId, tipo: f.tipo, monto, motivo, nota: f.nota });
-    s.aviso = `${f.tipo === 'salida' ? 'Salida' : 'Entrada'} de ${colones(monto)} guardada.`;
-    s.form = null;
-  } catch (e) { f.error = e.message; }
-  await pintar();
 }
 
 async function cerrar(confirmar) {
