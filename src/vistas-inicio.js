@@ -62,7 +62,7 @@ export function vistaInicio({ saludo, mensaje, negocios, decisiones, semana, via
     <div class="ini-kpis">${kpis}</div>
     <div class="ini-grid">
       <div class="ini-c"><h3>Decisiones que esperan por ti <span>${decisiones.length}</span></h3>
-        ${decisiones.map(decision).join('') || '<p class="ini-vacio">Por ahora no hay nada esperando tu decisión. Todo al día.</p>'}</div>
+        ${decisiones.map(decision).join('') || '<p class="ini-vacio">Por ahora no hay nada esperando tu decisión.</p>'}</div>
       <div>
         <div class="ini-ia"><b>Resumen de la semana</b><span>${semana.facturas ? `Han llegado ${semana.facturas} facturas de proveedores por ${colones(semana.total)} (con IVA).` : 'Esta semana todavía no han llegado facturas de proveedores.'}</span></div>
         <div class="ini-c"><h3>Tus próximas fechas</h3>
