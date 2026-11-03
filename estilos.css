@@ -416,3 +416,5 @@ body { background:
 @media (max-width: 340px) { .pestana { font-size: 12px; } }
 @media (max-width: 340px) { .pestanas { width: calc(100% - 8px); padding: 4px; } .pestanas-in { gap: 0; } .pestana { font-size: 11px; padding: 0; letter-spacing: -.2px; } }
 .pestana { flex: 1 1 auto; }
+#sin-conexion{position:fixed;left:0;right:0;top:0;z-index:60;padding:calc(6px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right)) 6px max(12px,env(safe-area-inset-left));background:#171212;color:#fff;font-size:14px;text-align:center}
+#sin-conexion:not([hidden]) ~ #app{padding-top:34px}

@@ -1,3 +1,4 @@
+import './aviso-conexion.js';
 import { datos } from './datos/index.js';
 import { leerMonto, aplicarTema, esc } from './ui.js';
 import { vistaPin, vistaEntrada, vistaSplash, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaMas, MINIMOS_EFECTIVO } from './vistas.js';
@@ -11,6 +12,7 @@ import { estadoDiferencia, diferencia } from './datos/calculos.js';
 import { construirBodega, accionBodega, entradaBodega, despuesDePintar, estadoBodega } from './bodega.js';
 import { rangoPorDefecto, rellenarPeriodos, sumarMeses, inicioMes } from './datos/compras-calc.js';
 import { vistaVentas } from './vistas-ventas.js';
+import { precargarTodo } from './datos/precarga.js';
 
 const raiz = document.getElementById('app');
 const leerLS = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -166,6 +168,7 @@ async function entrarConUsuario(u) {
   s.negocioId = s.negocios.some((n) => n.id === guardado) ? guardado : s.negocios[0].id;
   s.inicioListo = false; s.bodega = estadoBodega(); s.pestana = esAdmin() ? 'Inicio' : 'Caja'; s.fecha = null; s.pin = ''; s.pin1 = ''; s.errorPin = ''; s.cierre = null; s.aviso = ''; s.error = '';
   suscribirCompras(); suscribirEfectivo(); suscribirVentas();
+  if (esAdmin()) setTimeout(async () => { try { await precargarTodo(datos, { hoy: await datos.hoy() }); } catch { /* la copia local es un extra: nunca estorba */ } }, 4000);
 }
 
 let cancelarEfectivo = null;
