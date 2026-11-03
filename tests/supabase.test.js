@@ -130,7 +130,7 @@ test('correccion duplicada y caja duplicada se explican en espanol', async () =>
     if (q.tabla === 'cajas') return { data: { id: 7 }, error: null };
     if (q.tabla === 'movimientos' && q.op === 'insert') return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "movimientos_una_correccion"', details: 'Key (corrige_a)=(5) already exists.' } };
     if (q.tabla === 'movimientos') return { data: { id: 5, negocio_id: 'soda', tipo: 'salida', monto: 3000, motivo: 'Gas', corrige_a: null }, error: null };
-  });
+  }, CAJERO);
   await d.configurarPinLocal('4827');
   await assert.rejects(() => d.corregirMovimiento(5, {}), /ya fue corregido/);
   await assert.rejects(() => d.abrirCaja('soda', { fondoInicial: 0 }), /Ya hay una caja abierta/);
@@ -155,15 +155,15 @@ test('compras: resumen con una sola consulta y filtros hacia la base', async () 
   const args = [];
   const { d, cl } = await entrar((q) => {
     if (q.rpc === 'compras_agrupadas') { args.push(q.args); return { data: [{ clave: '2026-11-02', etiqueta: '2026-11-02', facturas: 2, neto: '1000.00', iva: '130.00', total: '1130.00' }, { clave: '2026-10-28', etiqueta: '', facturas: 1, neto: 100, iva: 0, total: 100 }], error: null }; }
-    if (q.tabla === 'compras_v') return { data: [{ clave: 'k', negocio_id: 'soda', dia: '2026-11-02', emitida_en: '2026-11-02T14:05:00Z', proveedor_nombre: 'P', proveedor_cedula: '3-1', tipo_proveedor: 'otros', clase: 'factura', moneda: 'USD', total: '113.00', neto: '100.00', iva: '13.00', total_crc: '58195.00', neto_crc: '51500.00', iva_crc: '6695.00', estado: 'pendiente', grupo: 'otros', rubro: 'x' }], error: null };
+    if (q.rpc === 'compras_lista') return { data: [{ clave: 'k', negocio_id: 'soda', dia: '2026-11-02', emitida_en: '2026-11-02T14:05:00Z', proveedor_nombre: 'P', proveedor_cedula: '3-1', tipo_proveedor: 'otros', clase: 'factura', moneda: 'USD', total: '113.00', neto: '100.00', iva: '13.00', total_crc: '58195.00', neto_crc: '51500.00', iva_crc: '6695.00', estado: 'pendiente', grupo: 'otros', rubro: 'x' }], error: null };
   });
   const r = await d.comprasResumen({ negocios: ['soda'], proveedor: '3-1' });
-  assert.equal(args.length, 1); assert.deepEqual(args[0], { p_negocios: ['soda'], p_desde: '2026-11-01', p_hasta: '2026-11-02', p_por: 'dia', p_proveedor: '3-1' });
+  assert.equal(args.length, 1); assert.deepEqual(args[0], { p_negocios: ['soda'], p_desde: '2026-11-01', p_hasta: '2026-11-02', p_por: 'dia', p_proveedor: '3-1', p_rubro: null });
   assert.equal(r.hoy.total, 1130); assert.equal(r.semana.total, 1130); assert.equal(r.mes.total, 1130);
   const u = await d.comprasUltimas({ negocios: ['soda'], proveedor: '3-1', limite: 5 });
   assert.equal(u[0].total, 113); assert.equal(u[0].moneda, 'USD'); assert.equal(u[0].hora, '08:05');
-  const q = cl.llamadas.find((l) => l.tabla === 'compras_v');
-  assert.deepEqual(q.filtros, [['in', 'negocio_id', ['soda']], ['eq', 'proveedor_cedula', '3-1']]);
+  const q = cl.llamadas.find((l) => l.rpc === 'compras_lista');
+  assert.deepEqual(q.args, { p_negocios: ['soda'], p_desde: null, p_hasta: null, p_proveedor: '3-1', p_rubro: null, p_limite: 5 });
 });
 
 test('tiempo real: se suscribe a dixi.compras y se puede cancelar', async () => {

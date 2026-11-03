@@ -350,3 +350,7 @@ body { background:
 .turno .fila b { text-align: right; }
 .tabla-ancha { min-width: 420px; } .tabla-ancha th, .tabla-ancha td { padding-left: 14px; } .tabla-ancha th:first-child, .tabla-ancha td:first-child { padding-left: 0; }
 .part { margin-top: 12px; border-top: 1px solid var(--linea); padding-top: 10px; } .part .d-fila { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--linea); } .part .d-fila .num { text-align: right; }
+/* Compras por proveedor: nombre legal pequeno y periodo en cuatro fichas */
+.legal { display: block; font-weight: 400; font-size: 13px; color: var(--tinta-suave, #6b6560); margin-top: 2px; }
+.fila-art .a-der { text-align: right; white-space: nowrap; margin-left: 12px; }
+.segmento.cuatro { grid-template-columns: repeat(4, 1fr); }

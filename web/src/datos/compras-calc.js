@@ -5,6 +5,17 @@ export const inicioMes = (t) => t.slice(0, 8) + '01';
 export function sumarMeses(t, n) { const d = deTexto(inicioMes(t)); d.setMonth(d.getMonth() + n); return aTexto(d); }
 const redond = (n) => Math.round(n * 100) / 100;
 
+// Nombres de proveedor. Misma logica que dixi.nombre_comercial / dixi.nombre_legal (SQL).
+// Las facturas traen "RAZON SOCIAL (NOMBRE COMERCIAL)": se muestra el comercial si existe y si no, el legal.
+export const limpiarNombre = (t) => String(t ?? '').replace(/[\t\r\n]+/g, ' ').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+export function nombreLegal(t) { const n = limpiarNombre(t); return /\([^()]*\)\s*$/.test(n) ? n.replace(/\s*\([^()]*\)\s*$/, '').trim() : n; }
+export function nombreComercial(t) {
+  const n = limpiarNombre(t); const m = n.match(/\(([^()]*)\)\s*$/);
+  const c = m ? m[1].replace(/^.*raz[oó]n comercial:\s*/i, '').trim() : '';
+  return c || nombreLegal(t);
+}
+export const comparaNombres = (a, b) => String(a).localeCompare(String(b), 'es', { sensitivity: 'base' });
+
 // Inicio del periodo (dia, semana que empieza lunes, mes) al que pertenece la fecha
 export function inicioPeriodo(t, por) { return por === 'semana' ? lunesDe(t) : por === 'mes' ? inicioMes(t) : t; }
 export function siguientePeriodo(t, por) { return por === 'semana' ? sumarDias(t, 7) : por === 'mes' ? sumarMeses(t, 1) : sumarDias(t, 1); }
@@ -27,7 +38,10 @@ export function rellenarPeriodos(filas, por, desde, hasta) {
 }
 
 const tipoDe = (c) => c.tipoProveedor;
-export function agruparCompras(compras, { negocios = null, desde, hasta, por, proveedor = null }) {
+export function agruparCompras(compras, { negocios = null, desde, hasta, por, proveedor = null, rubro = null }) {
+  // Con clasificacion: solo las lineas de esa clasificacion (la factura cuenta una vez aunque traiga otras cosas)
+  if (rubro) compras = compras.filter((c) => (c.rubros || []).some((r) => r.rubro === rubro && (r.neto !== 0 || r.iva !== 0)))
+    .map((c) => { const rs = c.rubros.filter((r) => r.rubro === rubro); const neto = rs.reduce((a, r) => a + r.neto, 0), iva = rs.reduce((a, r) => a + r.iva, 0); return { ...c, netoCrc: neto, ivaCrc: iva, rubros: rs }; });
   const sel = compras.filter((c) => (!negocios || negocios.includes(c.negocioId)) && c.dia >= desde && c.dia <= hasta && (!proveedor || c.proveedorCedula === proveedor));
   const grupos = new Map();
   const sumar = (clave, etiqueta, c, neto, iva, clavefac) => {
@@ -36,7 +50,7 @@ export function agruparCompras(compras, { negocios = null, desde, hasta, por, pr
   };
   for (const c of sel) {
     if (['dia', 'semana', 'mes'].includes(por)) { const k = inicioPeriodo(c.dia, por); sumar(k, k, c, c.netoCrc, c.ivaCrc, c.clave); }
-    else if (por === 'proveedor') sumar(c.proveedorCedula, c.proveedor, c, c.netoCrc, c.ivaCrc, c.clave);
+    else if (por === 'proveedor') sumar(c.proveedorCedula, nombreComercial(c.proveedor), c, c.netoCrc, c.ivaCrc, c.clave);
     else if (por === 'tipo_proveedor') sumar(tipoDe(c), tipoDe(c), c, c.netoCrc, c.ivaCrc, c.clave);
     else if (por === 'grupo' || por === 'rubro') for (const r of c.rubros) {
       const k = por === 'grupo' ? r.grupo : r.rubro;

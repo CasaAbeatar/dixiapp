@@ -50,17 +50,23 @@ test('informacion ciega: el cajero no recibe esperado, ventas ni sobrante', asyn
 });
 
 test('cualquier cajero abre con el fondo que quiera y queda guardado quien abre y quien cierra', async () => {
+  const c0 = await cajero();
+  await assert.rejects(() => c0.abrirCaja('pollos', { fondoInicial: 0 }), /No autorizado/); // el cajero de prueba solo trabaja en Soda
   const a = await admin();
   assert.equal(await a.cajaActual('pollos').then((c) => c.estado), 'cerrada');
-  await assert.rejects(() => a.abrirCaja('pollos', { fondoInicial: -1 }), /fondo/);
-  const c = await a.abrirCaja('pollos', { fondoInicial: 0 });
-  assert.equal(c.fondoInicial, 0); assert.equal(c.abiertaPor, 'Administrador de prueba');
-  await assert.rejects(() => a.abrirCaja('pollos', { fondoInicial: 1000 }), /Ya hay una caja abierta/);
-  const esp = (await a.cajaActual('pollos')).esperado;
-  const r = await a.cerrarCaja('pollos', { contado: esp });
-  assert.equal(r.diferencia, 0);
-  const act = await a.actividad('pollos', '2026-11-02');
-  assert.equal(act.cajas[0].cerradaPor, 'Administrador de prueba');
+  await assert.rejects(() => a.abrirCaja('pollos', { fondoInicial: 0 }), /cajeras en el facturador/);
+  const esp = (await c0.cajaActual('soda')).esperado;
+  assert.equal(esp, undefined); // informacion ciega
+  const r = await c0.cerrarCaja('soda', { contado: 0, confirmarFaltante: true });
+  assert.equal(r.cerrada, true);
+  const despues = await c0.cajaActual('soda');
+  assert.equal(despues.estado, 'cerrada'); assert.equal(despues.cerradaPor, 'Cajero de prueba');
+});
+
+test('la administradora no abre ni cierra caja (eso lo hacen las cajeras en el facturador)', async () => {
+  const d = await admin();
+  await assert.rejects(() => d.cerrarCaja('soda', { contado: 1000 }), /cajeras en el facturador/);
+  await assert.rejects(() => d.abrirCaja('soda', { fondoInicial: 0 }), /cajeras en el facturador/);
 });
 
 test('entradas y salidas ajustan el esperado; el motivo es libre y se aprende', async () => {
@@ -99,16 +105,15 @@ test('cualquier cajero ve la actividad de otras fechas, con quien cerro', async 
   assert.ok(act.movimientos.length >= 1);
 });
 
-test('cierre de administrador: diferencia, cierres y semana', async () => {
+test('cierres y semana de la administradora (el cierre lo hizo una cajera)', async () => {
+  const c = await cajero();
+  const r = await c.cerrarCaja('soda', { contado: 1, confirmarFaltante: true });
+  assert.equal(r.cerrada, true);
   const d = await admin();
-  const esperado = (await d.cajaActual('soda')).esperado;
-  const r = await d.cerrarCaja('soda', { contado: esperado + 1500 });
-  assert.equal(r.diferencia, 1500);
-  await assert.rejects(() => d.cerrarCaja('soda', { contado: 1 }), /cerrada/);
   const { items, hayMas } = await d.cierres('soda', { limite: 3 });
-  assert.equal(items.length, 3); assert.equal(hayMas, true); assert.equal(items[0].fecha, '2026-11-02');
+  assert.equal(items.length, 3); assert.equal(hayMas, true);
   const sem = await d.resumenSemana('soda');
-  assert.deepEqual(sem.dias.map((x) => x.fecha), ['2026-11-02']); assert.equal(sem.neto, sem.entradas - sem.salidas);
+  assert.equal(sem.neto, sem.entradas - sem.salidas);
 });
 
 test('compras: ultimas en orden, resumen coherente con agrupadas y notas de credito restan', async () => {
@@ -314,4 +319,24 @@ test('avisos del telefono: activar, apagar uno, monto minimo y desactivar (modo 
   const e = await d.avisosEstado();
   assert.equal(e.prefs.resumen_diario, false); assert.equal(e.prefs.efectivo_minimo, 25000);
   await d.avisosDesactivar(); assert.equal((await d.avisosEstado()).activo, false);
+});
+
+test('compras por proveedor: nombre comercial, orden por nombre, clasificacion y periodo', async () => {
+  const { nombreComercial, nombreLegal } = await import('../web/src/datos/compras-calc.js');
+  assert.equal(nombreComercial('GANADERA SANTA ELIA S.A. (CARNES MAROTO)'), 'CARNES MAROTO');
+  assert.equal(nombreLegal('GANADERA SANTA ELIA S.A. (CARNES MAROTO)'), 'GANADERA SANTA ELIA S.A.');
+  assert.equal(nombreComercial('POLLOS B.A.K. SOCIEDAD ANONIMA (POLLOS B.A.K. SOCIEDAD ANONIMA\t RAZON COMERCIAL:   POLLOS B.A.K S.A)'), 'POLLOS B.A.K S.A');
+  assert.equal(nombreComercial('3-101-816857 SOCIEDAD ANONIMA (SUPER LA SUERTE NO.2)'), 'SUPER LA SUERTE NO.2');
+  assert.equal(nombreComercial('SIGMA ALIMENTOS_S.A'), 'SIGMA ALIMENTOS S.A'); // sin parentesis: el legal
+  const d = await admin();
+  const provs = await d.comprasProveedores({ negocios: null });
+  const nombres = provs.map((p) => p.nombre);
+  assert.deepEqual(nombres, [...nombres].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' })));
+  assert.ok(provs.some((p) => p.nombre === 'Carnes Maroto' && p.legal.startsWith('Ganadera Santa Elia')));
+  const rub = (await d.comprasAgrupadas({ negocios: null, desde: '2026-01-01', hasta: '2026-12-31', por: 'rubro' }))[0].clave;
+  const conRubro = await d.comprasProveedores({ negocios: null, rubro: rub });
+  assert.ok(conRubro.length >= 1 && conRubro.length <= provs.length);
+  const total = (await d.comprasAgrupadas({ negocios: null, desde: '2026-01-01', hasta: '2026-12-31', por: 'mes', rubro: rub })).reduce((a, f) => a + f.total, 0);
+  const porProv = conRubro.reduce((a, f) => a + f.total, 0);
+  assert.ok(Math.abs(total - porProv) < 1, 'por mes y por proveedor suman lo mismo para la misma clasificacion');
 });

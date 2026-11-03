@@ -4,7 +4,7 @@ import { validarImplementacion } from './interfaz.js';
 import { efectivoEsperado, totalesMovimientos } from './calculos.js';
 import { aTexto, horaTexto, sumarDias, diasDeLaSemana, deTexto, lunesDe } from './fechas.js';
 import { crearBodegaPrueba } from './prueba-bodega.js';
-import { agruparCompras, resumenDesdeDias, desdeResumen, inicioMes, inicioPeriodo } from './compras-calc.js';
+import { nombreComercial, nombreLegal, comparaNombres, agruparCompras, resumenDesdeDias, desdeResumen, inicioMes, inicioPeriodo } from './compras-calc.js';
 
 const CLAVE = 'dixiapp.prueba.v2';
 const CLAVE_SESION = 'dixiapp.sesion.v2';
@@ -29,10 +29,10 @@ const SEMILLA_MOTIVOS = {
 };
 // Proveedores ficticios (nombres inventados)
 export const PROVEEDORES = [
-  { cedula: '3-101-900001', nombre: 'Avícola Central (ficticio)', tipo: 'comida_preparada', iva: 0.01, rubros: [['Pollo', 'comida_preparada', 1]] },
-  { cedula: '3-101-900002', nombre: 'Carnes del Valle (ficticio)', tipo: 'comida_preparada', iva: 0.01, rubros: [['Carnes', 'comida_preparada', 1]] },
+  { cedula: '3-101-900001', nombre: 'Avícola Central S.A. (Pollos El Valle)', tipo: 'comida_preparada', iva: 0.01, rubros: [['Pollo', 'comida_preparada', 1]] },
+  { cedula: '3-101-900002', nombre: 'Ganadera Santa Elia S.A. (Carnes Maroto)', tipo: 'comida_preparada', iva: 0.01, rubros: [['Carnes', 'comida_preparada', 1]] },
   { cedula: '3-101-900003', nombre: 'Verduras Don Beto (ficticio)', tipo: 'comida_preparada', iva: 0, rubros: [['Verduras', 'comida_preparada', 1]] },
-  { cedula: '3-101-900004', nombre: 'Bebidas del Norte (ficticio)', tipo: 'unitario', iva: 0.13, rubros: [['Bebidas', 'unitario', 0.8], ['Snacks', 'unitario', 0.2]] },
+  { cedula: '3-101-900004', nombre: 'Distribuidora BAK S.A. (Bebidas del Norte)', tipo: 'unitario', iva: 0.13, rubros: [['Bebidas', 'unitario', 0.8], ['Snacks', 'unitario', 0.2]] },
   { cedula: '3-101-900005', nombre: 'Empaques y Desechables (ficticio)', tipo: 'suministro', iva: 0.13, rubros: [['Empaques', 'suministro', 0.7], ['Limpieza', 'suministro', 0.3]] },
   { cedula: '3-101-900006', nombre: 'Gas Nacional (ficticio)', tipo: 'suministro', iva: 0.13, rubros: [['Gas', 'suministro', 1]] },
   { cedula: '3-101-900007', nombre: 'Ferretería La Esquina (ficticio)', tipo: 'otros', iva: 0.13, rubros: [['Sin clasificar', 'otros', 1]] },
@@ -187,7 +187,8 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
     const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
     return e.compras.filter((c) => ids.includes(c.negocioId));
   };
-  const publicaCompra = ({ rubros, ...c }) => c;
+  const publicaCompra = ({ rubros, ...c }) => ({ ...c, proveedor: nombreComercial(c.proveedor), proveedorLegal: nombreLegal(c.proveedor) });
+  const enRango = (c, desde, hasta) => (!desde || c.dia >= desde) && (!hasta || c.dia <= hasta);
 
   const { reiniciarBodega, ...metodosBodega } = crearBodegaPrueba({ almacen, hoy, ahora, exigirAdmin, nombreUsuario: () => usuario()?.nombre || 'Sistema' });
 
@@ -218,6 +219,7 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
     },
     async abrirCaja(negocioId, { fondoInicial }) {
       const u = exigir(); exigirNegocio(u, negocioId); const e = leer();
+      if (u.rol === 'administrador') throw new Error('El cierre y la apertura de caja los hacen las cajeras en el facturador, no en esta app.');
       if (!Number.isInteger(fondoInicial) || fondoInicial < 0) throw new Error('El fondo inicial debe ser un monto entero en colones (puede ser cero).');
       if (cajaAbierta(e, negocioId)) throw new Error('Ya hay una caja abierta en este negocio.');
       const c = { id: `caja-${e.siguiente++}`, negocioId, fecha: hoy(), abiertaA: horaTexto(ahora()), abiertaPor: u.nombre, fondoInicial, estado: 'abierta', ventas: { efectivo: 0, tarjeta: 0, sinpe: 0, transferencia: 0 } };
@@ -261,6 +263,7 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
     },
     async cerrarCaja(negocioId, { contado, confirmarFaltante = false }) {
       const u = exigir(); exigirNegocio(u, negocioId);
+      if (u.rol === 'administrador') throw new Error('El cierre y la apertura de caja los hacen las cajeras en el facturador, no en esta app.');
       if (!Number.isInteger(contado) || contado < 0) throw new Error('El efectivo contado debe ser un monto entero en colones');
       const e = leer(); const caja = cajaAbierta(e, negocioId);
       if (!caja) throw new Error('La caja ya está cerrada');
@@ -281,28 +284,30 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
       const dias = diasDeLaSemana(hoy()).map((fecha) => ({ fecha, ...totalesMovimientos(e.movimientos.filter((m) => m.negocioId === negocioId && m.fecha === fecha)) }));
       return { dias, entradas: dias.reduce((a, d) => a + d.entradas, 0), salidas: dias.reduce((a, d) => a + d.salidas, 0), neto: dias.reduce((a, d) => a + d.neto, 0) };
     },
-    async comprasProveedores({ negocios } = {}) {
-      const u = exigirAdmin(); const m = new Map();
-      for (const c of comprasVisibles(leer(), u, negocios)) m.set(c.proveedorCedula, c.proveedor);
-      return [...m].map(([cedula, nombre]) => ({ cedula, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    async comprasProveedores({ negocios, desde = null, hasta = null, rubro = null } = {}) {
+      const u = exigirAdmin();
+      const filas = agruparCompras(comprasVisibles(leer(), u, negocios), { desde: desde || '2000-01-01', hasta: hasta || '2999-12-31', por: 'proveedor', rubro });
+      const legal = new Map(); for (const c of comprasVisibles(leer(), u, negocios)) legal.set(c.proveedorCedula, nombreLegal(c.proveedor));
+      return filas.map((f) => ({ cedula: f.clave, nombre: f.etiqueta, legal: legal.get(f.clave) || f.etiqueta, facturas: f.facturas, neto: f.neto, iva: f.iva, total: f.total })).sort((a, b) => comparaNombres(a.nombre, b.nombre));
     },
     async comprasLineas(clave) {
       return [{ linea: 1, detalle: 'Pechuga de pollo sin hueso', cantidad: 20, unidad: 'kg', precioUnitario: 3900, subtotal: 78000, impuesto: 0, total: 78000 },
         { linea: 2, detalle: 'Aceite vegetal 18 L', cantidad: 2, unidad: 'unidad', precioUnitario: 21500, subtotal: 43000, impuesto: 5590, total: 48590 }];
     },
-    async comprasUltimas({ negocios, proveedor = null, limite = 8 } = {}) {
+    async comprasUltimas({ negocios, proveedor = null, rubro = null, desde = null, hasta = null, limite = 8 } = {}) {
       const u = exigirAdmin();
-      return comprasVisibles(leer(), u, negocios).filter((c) => !proveedor || c.proveedorCedula === proveedor)
+      return comprasVisibles(leer(), u, negocios).filter((c) => (!proveedor || c.proveedorCedula === proveedor) && enRango(c, desde, hasta)
+        && (!rubro || (c.rubros || []).some((r) => r.rubro === rubro && (r.neto !== 0 || r.iva !== 0))))
         .sort((a, b) => (b.dia + b.hora + b.clave).localeCompare(a.dia + a.hora + a.clave)).slice(0, limite).map(publicaCompra);
     },
-    async comprasResumen({ negocios, proveedor = null } = {}) {
+    async comprasResumen({ negocios, proveedor = null, rubro = null } = {}) {
       const u = exigirAdmin(); const h = hoy();
-      const dias = agruparCompras(comprasVisibles(leer(), u, negocios), { desde: desdeResumen(h), hasta: h, por: 'dia', proveedor });
+      const dias = agruparCompras(comprasVisibles(leer(), u, negocios), { desde: desdeResumen(h), hasta: h, por: 'dia', proveedor, rubro });
       return resumenDesdeDias(dias, h);
     },
-    async comprasAgrupadas({ negocios, desde, hasta, por, proveedor = null }) {
+    async comprasAgrupadas({ negocios, desde, hasta, por, proveedor = null, rubro = null }) {
       const u = exigirAdmin();
-      return agruparCompras(comprasVisibles(leer(), u, negocios), { desde, hasta, por, proveedor });
+      return agruparCompras(comprasVisibles(leer(), u, negocios), { desde, hasta, por, proveedor, rubro });
     },
     // ---------- Ventas en vivo (datos ficticios y estables: el mismo dia da la misma cifra) ----------
     async ventasEnVivo({ negocios } = {}) {

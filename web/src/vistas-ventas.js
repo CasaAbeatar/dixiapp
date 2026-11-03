@@ -24,9 +24,6 @@ function tarjetaTurno(n) {
   const t = n.turno, nombre = NEGOCIO[n.negocioId] || n.negocioId;
   if (!t) return `<section class="tarjeta resumen"><div class="etq">Turno · ${esc(nombre)}</div><div class="grande num">—</div><div class="etq">Todavía no hay turno en el facturador.</div></section>`;
   const abierto = t.estado === 'abierta';
-  const otros = (t.participantes || []).filter((p) => !p.abrio);
-  const part = (t.participantes || []).length
-    ? `<div class="part"><div class="etq">Quién facturó en este turno</div><ul class="lista">${t.participantes.map((p) => `<li class="d-fila"><span>${esc(p.nombre)}${p.abrio ? ' <span class="insignia neutra">abrió el turno</span>' : ' <span class="insignia falta">entró al turno</span>'}</span><span class="num">${p.ventas} ${p.ventas === 1 ? 'venta' : 'ventas'}${p.notas ? `, ${p.notas} ${p.notas === 1 ? 'nota' : 'notas'}` : ''} · <b>${colones(p.total)}</b></span></li>`).join('')}</ul></div>` : '';
   return `<section class="tarjeta resumen turno"><div class="etq">Turno · ${esc(nombre)} <span class="insignia ${abierto ? 'cuadra' : 'neutra'}">${abierto ? 'Abierto' : 'Cerrado'}</span></div>
     <div class="grande num" data-id="turno-${esc(n.negocioId)}">${colones(t.total)}</div>
     <div class="etq">con IVA incluido</div>
@@ -35,7 +32,7 @@ function tarjetaTurno(n) {
     ${!abierto ? `<div class="fila"><span class="etq">Cerró</span><b>${esc(t.cerradaPor || 'sin dato')}</b></div>` : ''}
     <div class="fila"><span class="etq">Neto, sin IVA</span><b class="num">${colones(t.neto)}</b></div>
     <div class="fila"><span class="etq">Documentos</span><b class="num">${t.docs}</b></div>
-    ${part}${otros.length && abierto ? '<p class="pie">Una persona distinta de quien abrió también facturó en este turno.</p>' : ''}</section>`;
+    </section>`;
 }
 
 function tarjetaPeriodo(titulo, r) {

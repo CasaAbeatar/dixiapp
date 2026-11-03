@@ -92,7 +92,10 @@ export function vistaCaja({ hoy, fecha, caja, act, esAdmin, form, sugerencias, a
   const abierta = caja?.estado === 'abierta';
   let panel = '';
   if (esHoy) {
-    if (!abierta) {
+    if (!abierta && esAdmin) {
+      panel = `<section class="tarjeta"><h2>${caja ? 'La caja está cerrada' : 'Todavía no hay caja abierta'}</h2>
+        <p class="etq" style="margin:0">${caja ? `La última cerró ${esc(caja.cerradaPor)} a las ${horaLegible(caja.cerradaA)} del ${esc(fechaLarga(caja.fecha))}. ` : ''}La caja la abren y la cierran las cajeras en el facturador.</p></section>`;
+    } else if (!abierta) {
       panel = `<section class="tarjeta"><h2>${caja ? 'La caja está cerrada' : 'Todavía no hay caja'}</h2>
         ${caja ? `<p class="etq" style="margin-top:0">La última cerró ${esc(caja.cerradaPor)} a las ${horaLegible(caja.cerradaA)} del ${esc(fechaLarga(caja.fecha))}.</p>` : ''}
         <label class="campo"><span>Fondo inicial <small>(lo que deja para empezar; puede ser ₡0)</small></span><div class="monto-wrap"><b>₡</b><input id="a-fondo" inputmode="numeric" autocomplete="off" placeholder="0" value="${esc(fondo)}"></div></label>
@@ -112,7 +115,7 @@ export function vistaCaja({ hoy, fecha, caja, act, esAdmin, form, sugerencias, a
         ${form ? formulario(form, sugerencias) : ''}`;
     }
   }
-  const cierreHtml = esHoy && abierta ? `<h2 class="titulo-seccion">Cerrar la caja</h2><section class="tarjeta" id="cierre">
+  const cierreHtml = esHoy && abierta && !esAdmin ? `<h2 class="titulo-seccion">Cerrar la caja</h2><section class="tarjeta" id="cierre">
       ${cierre?.faltante ? `<p class="error" role="alert"><b>Faltan ${colones(cierre.faltante)}</b> respecto a lo que debería haber. Cuente de nuevo. Si el conteo es correcto puede cerrar igual y queda registrado.</p>` : ''}
       ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
       <label class="campo"><span>Efectivo contado en caja</span><div class="monto-wrap"><b>₡</b><input id="c-contado" inputmode="numeric" autocomplete="off" placeholder="0" value="${esc(cierre?.contado ?? '')}"></div></label>

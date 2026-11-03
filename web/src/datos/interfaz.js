@@ -39,9 +39,9 @@ export const METODOS = [
   'cierres',              // (negocioId, {limite}) => { items: Cierre[], hayMas }      [administrador]
   'resumenSemana',        // (negocioId) => { dias:[{fecha,entradas,salidas,neto}], entradas, salidas, neto } [administrador]
   // Compras (solo administradores)
-  'comprasProveedores',   // ({negocios}) => [{cedula, nombre}]
+  'comprasProveedores',   // ({negocios, desde, hasta, rubro}) => [{cedula, nombre (comercial si existe), legal, facturas, neto, iva, total}] por nombre
   'comprasLineas',        // (clave) => [{linea, detalle, cantidad, unidad, precioUnitario, subtotal, impuesto, total}] (solo lectura)
-  'comprasUltimas',       // ({negocios, proveedor, limite}) => Compra[] (mas reciente primero)
+  'comprasUltimas',       // ({negocios, proveedor, rubro, desde, hasta, limite}) => Compra[] (mas reciente primero)
   'comprasResumen',       // ({negocios, proveedor}) => { hoy, semana, mes } cada uno { facturas, neto, iva, total }
   'comprasAgrupadas',     // ({negocios, desde, hasta, por, proveedor}) => [{clave, etiqueta, facturas, neto, iva, total}]
   'comprasSuscribir',     // (callback) => funcion para cancelar (tiempo real)
