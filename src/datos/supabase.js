@@ -3,6 +3,8 @@
 // Acceso: correo + contrasena (Supabase Auth) y, ademas, un PIN local por aparato para desbloquear sin escribir la clave.
 // El PIN solo guarda un hash PBKDF2 con sal en este aparato y solo sirve mientras haya una sesion valida.
 import { validarImplementacion } from './interfaz.js';
+import { CONFIG } from './config.js';
+import { motivoNoDisponible, suscripcionActual, crearSuscripcion, datosDe } from './push-cliente.js';
 import { horaLegible, lunesDe, sumarDias } from './fechas.js';
 import { resumenDesdeDias, desdeResumen } from './compras-calc.js';
 import { SUGERENCIA_MINIMOS } from './minimos-sugeridos.js';
@@ -79,14 +81,14 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
     nota: m.nota || '', registradoPor: m.registrado_por_nombre, corrigeA: m.corrige_a ?? null, corregido: corregidos.has(m.id),
   });
   const mapCompra = (r) => ({
-    clave: r.clave, negocioId: r.negocio_id, dia: r.dia, hora: horaCR(r.emitida_en), proveedor: r.proveedor_nombre, proveedorCedula: r.proveedor_cedula,
+    clave: r.clave, negocioId: r.negocio_id, dia: r.dia, hora: horaCR(r.emitida_en), proveedor: r.proveedor_visible || r.proveedor_nombre, proveedorLegal: r.proveedor_legal || r.proveedor_nombre, proveedorCedula: r.proveedor_cedula,
     tipoProveedor: r.tipo_proveedor, clase: r.clase, moneda: r.moneda, total: num(r.total), neto: num(r.neto), iva: num(r.iva),
     totalCrc: num(r.total_crc), netoCrc: num(r.neto_crc), ivaCrc: num(r.iva_crc), estado: r.estado, grupo: r.grupo, rubro: r.rubro, consecutivo: r.consecutivo,
   });
   const mapFilaAgrupada = (f) => ({ clave: f.clave, etiqueta: f.etiqueta, facturas: Number(f.facturas), neto: Number(f.neto), iva: Number(f.iva), total: Number(f.total) });
-  const rpcAgrupada = async ({ negocios, desde, hasta, por, proveedor }) => {
+  const rpcAgrupada = async ({ negocios, desde, hasta, por, proveedor, rubro }) => {
     await exigirAdmin();
-    const r = ok(await db().rpc('compras_agrupadas', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: desde, p_hasta: hasta, p_por: por, p_proveedor: proveedor || null }));
+    const r = ok(await db().rpc('compras_agrupadas', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: desde, p_hasta: hasta, p_por: por, p_proveedor: proveedor || null, p_rubro: rubro || null }));
     return (r || []).map(mapFilaAgrupada);
   };
   const cajaAbierta = async (negocioId) => ok(await db().from('cajas').select('id').eq('negocio_id', negocioId).eq('estado', 'abierta').limit(1).maybeSingle());
@@ -172,7 +174,7 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
       return { ...base, entradas: num(r.entradas), salidas: num(r.salidas), esperado: num(r.esperado), ventas: r.ventas, contado: num(r.contado), diferencia: num(r.diferencia) };
     },
     async abrirCaja(negocioId, { fondoInicial }) {
-      await exigir();
+      const u = await exigir(); if (u.rol === 'administrador') throw new Error('El cierre y la apertura de caja los hacen las cajeras en el facturador, no en esta app.');
       if (!Number.isInteger(fondoInicial) || fondoInicial < 0) throw new Error('El fondo inicial debe ser un monto entero en colones (puede ser cero).');
       return mapCaja(ok(await db().from('cajas').insert({ negocio_id: negocioId, fondo_inicial: fondoInicial }).select().single()));
     },
@@ -208,7 +210,7 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
       return ok(await db().from('motivos').select('texto').eq('tipo', tipo).order('usos', { ascending: false }).order('ultimo_uso', { ascending: false }).limit(8)).map((m) => m.texto);
     },
     async cerrarCaja(negocioId, { contado, confirmarFaltante = false }) {
-      await exigir();
+      const u = await exigir(); if (u.rol === 'administrador') throw new Error('El cierre y la apertura de caja los hacen las cajeras en el facturador, no en esta app.');
       if (!Number.isInteger(contado) || contado < 0) throw new Error('El efectivo contado debe ser un monto entero en colones');
       const caja = await cajaAbierta(negocioId);
       if (!caja) throw new Error('La caja ya está cerrada');
@@ -244,28 +246,81 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
       return { dias: out, entradas: out.reduce((a, d) => a + d.entradas, 0), salidas: out.reduce((a, d) => a + d.salidas, 0), neto: out.reduce((a, d) => a + d.neto, 0) };
     },
 
-    async comprasProveedores({ negocios } = {}) {
-      const h = hoy(); const desde = `${Number(h.slice(0, 4)) - 1}${h.slice(4)}`;
-      const r = await rpcAgrupada({ negocios, desde, hasta: h, por: 'proveedor' });
-      return r.map((f) => ({ cedula: f.clave, nombre: f.etiqueta })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    async comprasProveedores({ negocios, desde = null, hasta = null, rubro = null } = {}) {
+      await exigirAdmin();
+      const h = hoy(); const d = desde || `${Number(h.slice(0, 4)) - 1}${h.slice(4)}`;
+      const r = ok(await db().rpc('compras_proveedores', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: d, p_hasta: hasta || h, p_rubro: rubro || null }));
+      return (r || []).map((f) => ({ cedula: f.cedula, nombre: f.nombre, legal: f.legal, facturas: Number(f.facturas), neto: num(f.neto), iva: num(f.iva), total: num(f.total) }));
     },
     async comprasLineas(clave) {
       await exigirAdmin();
       const r = ok(await db().rpc('compras_lineas', { p_clave: clave }));
       return (r || []).map((l) => ({ linea: l.linea, detalle: l.detalle || '', cantidad: num(l.cantidad), unidad: l.unidad || '', precioUnitario: num(l.precio_unitario), subtotal: num(l.subtotal), impuesto: num(l.impuesto), total: num(l.total) }));
     },
-    async comprasUltimas({ negocios, proveedor = null, limite = 8 } = {}) {
+    async comprasUltimas({ negocios, proveedor = null, rubro = null, desde = null, hasta = null, limite = 8 } = {}) {
       await exigirAdmin();
-      let q = db().from('compras_v').select('*');
-      q = filtrarNeg(q, negocios); if (proveedor) q = q.eq('proveedor_cedula', proveedor);
-      return ok(await q.order('emitida_en', { ascending: false }).limit(limite)).map(mapCompra);
+      const r = ok(await db().rpc('compras_lista', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: desde, p_hasta: hasta, p_proveedor: proveedor, p_rubro: rubro, p_limite: limite }));
+      return (r || []).map(mapCompra);
     },
-    async comprasResumen({ negocios, proveedor = null } = {}) {
+    async comprasResumen({ negocios, proveedor = null, rubro = null } = {}) {
       const h = hoy();
-      const dias = await rpcAgrupada({ negocios, desde: desdeResumen(h), hasta: h, por: 'dia', proveedor });
+      const dias = await rpcAgrupada({ negocios, desde: desdeResumen(h), hasta: h, por: 'dia', proveedor, rubro });
       return resumenDesdeDias(dias, h);
     },
     async comprasAgrupadas(p) { return rpcAgrupada(p); },
+    // ---------- Ventas en vivo (solo lectura del facturador por funciones dixi.ventas_*) ----------
+    async ventasEnVivo({ negocios } = {}) {
+      await exigirAdmin();
+      const r = ok(await db().rpc('ventas_en_vivo', { p_negocios: negocios && negocios.length ? negocios : null }));
+      const bloque = (b) => (b ? { total: num(b.con_iva), iva: num(b.iva), neto: num(b.con_iva) - num(b.iva), docs: Number(b.docs), desde: b.desde, hasta: b.hasta, estado: b.estado, abiertaPor: b.abierta_por || null, cerradaPor: b.cerrada_por || null, terminal: b.terminal ?? null, participantes: (b.participantes || []).map((p) => ({ usuario: p.usuario, nombre: p.nombre, abrio: !!p.abrio, ventas: Number(p.ventas || 0), notas: Number(p.notas || 0), total: num(p.con_iva) })) } : null);
+      return { generado: r.generado, negocios: (r.negocios || []).map((n) => ({ negocioId: n.negocio_id, turno: bloque(n.turno), hoy: bloque(n.hoy), semana: bloque(n.semana), mes: bloque(n.mes) })) };
+    },
+    async ventasAgrupadas({ negocios, desde, hasta, por }) {
+      await exigirAdmin();
+      const r = ok(await db().rpc('ventas_agrupadas', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: desde, p_hasta: hasta, p_por: por }));
+      return (r || []).map((f) => ({ clave: f.clave, etiqueta: f.clave, facturas: Number(f.documentos), neto: Number(f.sin_iva), iva: Number(f.iva), total: Number(f.con_iva) }));
+    },
+    async ventasTop({ negocios, desde, hasta, limite = 5 }) {
+      await exigirAdmin();
+      const r = ok(await db().rpc('ventas_top', { p_negocios: negocios && negocios.length ? negocios : null, p_desde: desde, p_hasta: hasta, p_limite: limite }));
+      const lista = (l) => (l || []).map((p) => ({ nombre: p.nombre, unidades: Number(p.unidades), total: num(p.con_iva) }));
+      return { desde: r.desde, hasta: r.hasta, mas: lista(r.mas), menos: lista(r.menos), vendidos: Number(r.vendidos || 0), menuTotal: Number(r.menu_total || 0), sinVentas: r.sin_ventas == null ? null : Number(r.sin_ventas) };
+    },
+    async ventasPorHora({ negocios, fecha }) {
+      await exigirAdmin();
+      const r = ok(await db().rpc('ventas_por_hora', { p_negocios: negocios && negocios.length ? negocios : null, p_fecha: fecha })) || [];
+      return { fecha, semanas: r.length ? Number(r[0].semanas || 0) : 0, horas: r.map((h) => ({ hora: Number(h.hora), hoy: num(h.hoy), promedio: h.promedio == null ? null : num(h.promedio), docs: Number(h.docs || 0) })) };
+    },
+    // ---------- Avisos en el telefono ----------
+    async avisosEstado() {
+      await exigirAdmin();
+      const motivo = motivoNoDisponible(), sub = await suscripcionActual();
+      if (!sub) return { motivo, activo: false, prefs: {} };
+      const r = ok(await db().rpc('push_estado', { p_endpoint: sub.endpoint }));
+      return { motivo: motivo === 'bloqueado' ? motivo : '', activo: !!r?.activo, prefs: r?.prefs || {} };
+    },
+    async avisosActivar() {
+      await exigirAdmin();
+      const sub = await crearSuscripcion(CONFIG.vapid);
+      if (!sub) return { motivo: 'bloqueado', activo: false, prefs: {} };
+      const d = datosDe(sub);
+      ok(await db().rpc('push_guardar', { p_endpoint: d.endpoint, p_p256dh: d.p256dh, p_auth: d.auth, p_agente: navigator.userAgent }));
+      return { motivo: '', activo: true, prefs: {} };
+    },
+    async avisosDesactivar() {
+      await exigirAdmin();
+      const sub = await suscripcionActual(); if (!sub) return;
+      ok(await db().rpc('push_quitar', { p_endpoint: sub.endpoint }));
+      await sub.unsubscribe();
+    },
+    async avisosGuardarPrefs(prefs) {
+      await exigirAdmin();
+      const sub = await suscripcionActual(); if (!sub) return prefs;
+      ok(await db().rpc('push_prefs_guardar', { p_endpoint: sub.endpoint, p_prefs: prefs }));
+      return prefs;
+    },
+    async avisosProbar() { await exigirAdmin(); ok(await db().rpc('push_prueba')); },
+    async ventasSuscribir(cb) { await exigirAdmin(); const t = setInterval(() => cb({ tipo: 'pulso' }), 20000); return () => clearInterval(t); },
     // ---------- Inicio de Dixia ----------
     async viajes() {
       await exigir();

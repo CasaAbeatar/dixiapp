@@ -1,14 +1,15 @@
 import { datos } from './datos/index.js';
 import { leerMonto, aplicarTema, esc } from './ui.js';
-import { vistaPin, vistaEntrada, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas } from './vistas.js';
+import { vistaPin, vistaEntrada, vistaCorreo, marco, selectorNegocio, vistaCaja, vistaCierres, vistaMas, MINIMOS_EFECTIVO } from './vistas.js';
 import { resultadosBusqueda, vistaCompras } from './vistas-compras.js';
 import { vistaInicio, diasHasta } from './vistas-inicio.js';
 import { mensajeDelDia } from './mensajes.js';
-import { fechaLarga } from './datos/fechas.js';
+import { fechaLarga, lunesDe } from './datos/fechas.js';
 import { colones } from './datos/formato.js';
 import { estadoDiferencia, diferencia } from './datos/calculos.js';
 import { construirBodega, accionBodega, entradaBodega, despuesDePintar, estadoBodega } from './bodega.js';
-import { rangoPorDefecto, rellenarPeriodos } from './datos/compras-calc.js';
+import { rangoPorDefecto, rellenarPeriodos, sumarMeses, inicioMes } from './datos/compras-calc.js';
+import { vistaVentas } from './vistas-ventas.js';
 
 const raiz = document.getElementById('app');
 const leerLS = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -19,12 +20,12 @@ const s = {
   acceso: 'sin_sesion', usuario: null, negocios: [], negocioId: null, pestana: 'Caja', tema: leerLS('dixiapp.tema', 'auto'),
   pin: '', pin1: '', faseCrear: 'nuevo', errorPin: '', correo: '', errorCorreo: '', cargando: false,
   fecha: null, form: null, aviso: '', error: '', fondo: '', cierre: null, corrigiendo: null, limite: 7,
-  filtro: { neg: 'ambos', proveedor: '', busca: '' }, bodega: estadoBodega(), viaje: null, viajeForm: null, resolviendo: null, notaDif: '', avisoEfectivo: '', por: 'dia', abierta: null, lineasFac: {}, vivo: false, ultimo: Date.now(), esperado: 0,
+  filtro: { neg: 'ambos', proveedor: '', busca: '', rubro: '', periodo: 'ultimas' }, bodega: estadoBodega(), viaje: null, viajeForm: null, resolviendo: null, notaDif: '', avisoEfectivo: '', por: 'dia', abierta: null, ventasPor: 'dia', filtroVentas: { neg: 'ambos' }, lineasFac: {}, vivo: false, ultimo: Date.now(), esperado: 0,
 };
 aplicarTema(s.tema);
 
 const esAdmin = () => s.usuario?.rol === 'administrador';
-const pestanasDe = () => (esAdmin() ? ['Inicio', 'Caja', 'Compras', 'Bodega', 'Cierres', 'Más'] : ['Caja', 'Más']);
+const pestanasDe = () => (esAdmin() ? ['Inicio', 'Caja', 'Ventas', 'Compras', 'Bodega', 'Cierres', 'Más'] : ['Caja', 'Más']);
 let pintando = 0;
 
 async function pintar() {
@@ -63,12 +64,15 @@ async function construir() {
   } else if (s.pestana === 'Cierres' && esAdmin()) {
     const [{ items, hayMas }, semana] = await Promise.all([datos.cierres(s.negocioId, { limite: s.limite }), datos.resumenSemana(s.negocioId)]);
     contenido = selectorNegocio(s.negocios, s.negocioId) + vistaCierres({ cierres: items, hayMas, semana });
+  } else if (s.pestana === 'Ventas' && esAdmin()) {
+    contenido = await construirVentas(hoy); titulo = { nombre: 'Ventas' };
   } else if (s.pestana === 'Compras' && esAdmin()) {
     contenido = await construirCompras(hoy); titulo = { nombre: 'Compras' };
   } else if (s.pestana === 'Bodega' && esAdmin()) {
     contenido = await construirBodega(datos, s.bodega, hoy); titulo = { nombre: 'Bodega' };
   } else {
-    contenido = vistaMas({ usuario: s.usuario, tema: s.tema, esAdmin: esAdmin(), esPrueba: datos.esPrueba, conBloqueo: !datos.esPrueba, negocios: s.negocios });
+    if (esAdmin()) s.avisos = await datos.avisosEstado().catch(() => null);
+    contenido = vistaMas({ usuario: s.usuario, tema: s.tema, esAdmin: esAdmin(), esPrueba: datos.esPrueba, conBloqueo: !datos.esPrueba, negocios: s.negocios, avisos: esAdmin() ? s.avisos : null });
     titulo = s.negocios.find((n) => n.id === s.negocioId);
   }
   s.error = '';
@@ -101,19 +105,41 @@ async function construirInicio(hoy) {
   return vistaInicio({ saludo: h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches', mensaje: mensajeDelDia().texto, negocios, decisiones, semana: compras.semana, viaje: s.viaje, viajeForm: s.viajeForm, movimientos: movs.map((m) => ({ ...m, negocio: nombreNeg(m.negocioId) })), aviso: s.avisoEfectivo, hoy });
 }
 
+async function construirVentas(hoy) {
+  const negs = s.filtroVentas.neg === 'ambos' ? null : [s.filtroVentas.neg];
+  const rango = s.ventasPor === 'mes' ? { desde: sumarMeses(hoy, -11), hasta: hoy } : rangoPorDefecto(hoy, s.ventasPor);
+  const rangoMes = { desde: sumarMeses(hoy, -11), hasta: hoy };
+  const topPor = s.ventasTop || 'hoy', rangoTop = { desde: topPor === 'hoy' ? hoy : topPor === 'semana' ? lunesDe(hoy) : inicioMes(hoy), hasta: hoy };
+  const [enVivo, serie, meses, top, horasDia] = await Promise.all([
+    datos.ventasEnVivo({ negocios: negs }), datos.ventasAgrupadas({ negocios: negs, ...rango, por: s.ventasPor }), datos.ventasAgrupadas({ negocios: negs, ...rangoMes, por: 'mes' }),
+    datos.ventasTop({ negocios: negs, ...rangoTop, limite: 5 }).catch(() => null), datos.ventasPorHora({ negocios: negs, fecha: hoy }).catch(() => null),
+  ]);
+  const ahoraTexto = new Date().toLocaleTimeString('es-CR', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  return vistaVentas({ negociosPermitidos: s.negocios, filtro: s.filtroVentas, vivo: s.vivoVentas, en_vivo: enVivo, por: s.ventasPor,
+    grafico: rellenarPeriodos(serie, s.ventasPor, rango.desde, rango.hasta), meses: rellenarPeriodos(meses, 'mes', rangoMes.desde, rangoMes.hasta), error: s.error, ahoraTexto, top, topPor, horasDia, hoy });
+}
+
 async function construirCompras(hoy) {
   const negs = s.filtro.neg === 'ambos' ? null : [s.filtro.neg];
-  let proveedores = await datos.comprasProveedores({ negocios: negs });
+  const rubro = s.filtro.rubro || null;
+  // Proveedores por orden alfabetico (nombre comercial si existe); si hay clasificacion, solo los que vendieron eso
+  let proveedores = await datos.comprasProveedores({ negocios: negs, rubro });
   s.provsCache = proveedores;
   if (s.filtro.proveedor && !proveedores.some((p) => p.cedula === s.filtro.proveedor)) s.filtro.proveedor = '';
-  const base = { negocios: negs, proveedor: s.filtro.proveedor || null };
+  const base = { negocios: negs, proveedor: s.filtro.proveedor || null, rubro };
   const rango = rangoPorDefecto(hoy, s.por);
-  const [resumen, ultimas, serie, tipos, rubros, provs] = await Promise.all([
-    datos.comprasResumen(base), datos.comprasUltimas({ ...base, limite: 8 }),
+  const per = s.filtro.periodo || 'ultimas';
+  const lapso = per === 'hoy' ? { desde: hoy, hasta: hoy } : per === 'semana' ? { desde: lunesDe(hoy), hasta: hoy } : { desde: inicioMes(hoy), hasta: hoy };
+  const lista = per === 'ultimas' ? { limite: 8 } : { ...lapso, limite: 300 };
+  const [resumen, ultimas, serie, tipos, rubros, provs, provsPeriodo] = await Promise.all([
+    datos.comprasResumen(base), datos.comprasUltimas({ ...base, ...lista }),
     datos.comprasAgrupadas({ ...base, ...rango, por: s.por }),
-    datos.comprasAgrupadas({ ...base, ...rango, por: 'tipo_proveedor' }), datos.comprasAgrupadas({ ...base, ...rango, por: 'rubro' }), datos.comprasAgrupadas({ ...base, ...rango, por: 'proveedor' }),
+    datos.comprasAgrupadas({ ...base, ...rango, por: 'tipo_proveedor' }),
+    datos.comprasAgrupadas({ negocios: negs, proveedor: s.filtro.proveedor || null, ...rango, por: 'rubro' }), // sin filtrar por clasificacion, para poder cambiar de una a otra
+    datos.comprasAgrupadas({ ...base, ...rango, por: 'proveedor' }),
+    datos.comprasProveedores({ negocios: negs, rubro, ...lapso }),
   ]);
-  return vistaCompras({ hoy, negociosPermitidos: s.negocios, filtro: s.filtro, proveedores, resumen, ultimas, por: s.por, lineas: s.lineasFac, grafico: rellenarPeriodos(serie, s.por, rango.desde, rango.hasta), rango, tipos, rubros, provs, abierta: s.abierta, vivo: s.vivo, error: s.error });
+  return vistaCompras({ hoy, negociosPermitidos: s.negocios, filtro: s.filtro, proveedores, resumen, ultimas, por: s.por, lineas: s.lineasFac, grafico: rellenarPeriodos(serie, s.por, rango.desde, rango.hasta), rango, tipos, rubros, provs, provsPeriodo, abierta: s.abierta, vivo: s.vivo, error: s.error });
 }
 
 function vistaAccesoActual() {
@@ -133,7 +159,7 @@ async function entrarConUsuario(u) {
   const guardado = leerLS('dixiapp.negocio', '');
   s.negocioId = s.negocios.some((n) => n.id === guardado) ? guardado : s.negocios[0].id;
   s.inicioListo = false; s.bodega = estadoBodega(); s.pestana = esAdmin() ? 'Inicio' : 'Caja'; s.fecha = null; s.pin = ''; s.pin1 = ''; s.errorPin = ''; s.form = null; s.cierre = null; s.aviso = ''; s.error = '';
-  suscribirCompras(); suscribirEfectivo();
+  suscribirCompras(); suscribirEfectivo(); suscribirVentas();
 }
 
 let cancelarEfectivo = null;
@@ -162,6 +188,17 @@ async function suscribirCompras() {
       }, 300);
     });
   } catch { /* sin tiempo real: la vista sigue funcionando al abrirla */ }
+}
+
+let cancelarVentas = null;
+async function suscribirVentas() {
+  if (cancelarVentas) { cancelarVentas(); cancelarVentas = null; }
+  if (!esAdmin()) return;
+  try {
+    cancelarVentas = await datos.ventasSuscribir(async () => {
+      if (s.usuario && s.pestana === 'Ventas' && !document.hidden) { s.vivoVentas = true; await pintar(); setTimeout(() => { s.vivoVentas = false; }, 4000); }
+    });
+  } catch { /* sin pulso: se ve al abrir la pestana */ }
 }
 
 async function evaluarAcceso() {
@@ -217,6 +254,11 @@ raiz.addEventListener('click', async (ev) => {
     if (a === 'negocio') { s.negocioId = v; escribirLS('dixiapp.negocio', v); Object.assign(s, { form: null, limite: 7, fecha: null, aviso: '', cierre: null, corrigiendo: null }); return pintar(); }
     if (a === 'tema') { s.tema = v; escribirLS('dixiapp.tema', v); aplicarTema(v); return pintar(); }
     if (a === 'restablecer') { await datos.restablecerPrueba(); s.aviso = ''; return pintar(); }
+    if (a === 'avisos-activar') { s.avisos = await datos.avisosActivar(); return pintar(); }
+    if (a === 'avisos-desactivar') { await datos.avisosDesactivar(); return pintar(); }
+    if (a === 'avisos-probar') { await datos.avisosProbar(); return pintar(); }
+    if (a === 'aviso-pref') { const p = { ...(s.avisos?.prefs || {}) }; p[v] = !(p[v] ?? true); await datos.avisosGuardarPrefs(p); return pintar(); }
+    if (a === 'aviso-min') { const p = { ...(s.avisos?.prefs || {}) }; const i = MINIMOS_EFECTIVO.indexOf(Number(p.efectivo_minimo || 0)); p.efectivo_minimo = MINIMOS_EFECTIVO[(i + 1) % MINIMOS_EFECTIVO.length]; await datos.avisosGuardarPrefs(p); return pintar(); }
     if (a === 'mas-cierres') { s.limite += 7; return pintar(); }
     if (a === 'ir-bodega') { s.bodega.seccion = v; s.pestana = 'Bodega'; await pintar(); return void window.scrollTo(0, 0); }
     if (a === 'dif-abrir') { s.resolviendo = v; s.notaDif = ''; return pintar(); }
@@ -245,10 +287,15 @@ raiz.addEventListener('click', async (ev) => {
     if (a === 'confirmar-corr') { await datos.corregirMovimiento(v, {}); s.corrigiendo = null; s.aviso = 'Corrección registrada. El movimiento original queda a la vista.'; return pintar(); }
     if (a === 'cerrar-caja') return cerrar(v === 'confirmar');
     if (a === 'cancelar-cierre') { s.cierre = null; return pintar(); }
+    // Ventas
+    if (a === 'ventas-negocio') { s.filtroVentas.neg = v; return pintar(); }
+    if (a === 'ventas-por') { s.ventasPor = v; return pintar(); }
+    if (a === 'ventas-top') { s.ventasTop = v; return pintar(); }
     // Compras
     if (a === 'filtro-negocio') { s.filtro.neg = v; s.abierta = null; return pintar(); }
     if (a === 'elegir-prov') { s.filtro.proveedor = v; s.filtro.busca = ''; s.abierta = null; return pintar(); }
     if (a === 'por') { s.por = v; return pintar(); }
+    if (a === 'periodo') { s.filtro.periodo = v; s.abierta = null; return pintar(); }
     if (a === 'factura') {
       s.abierta = s.abierta === v ? null : v; pintar();
       if (s.abierta && !(s.abierta in s.lineasFac)) {
@@ -284,7 +331,10 @@ raiz.addEventListener('input', (ev) => {
   }
   if (id === 'a-correo') s.correo = ev.target.value;
 });
-raiz.addEventListener('change', (ev) => { if (ev.target.id === 'f-proveedor') { s.filtro.proveedor = ev.target.value; s.abierta = null; pintar(); } });
+raiz.addEventListener('change', (ev) => {
+  if (ev.target.id === 'f-proveedor') { s.filtro.proveedor = ev.target.value; s.abierta = null; pintar(); }
+  if (ev.target.id === 'f-rubro') { s.filtro.rubro = ev.target.value; s.abierta = null; pintar(); }
+});
 raiz.addEventListener('submit', async (ev) => {
   if (ev.target.dataset.form === 'pin') { ev.preventDefault(); if (s.pin.length === 4) intentarPin(); return; }
   if (ev.target.dataset.form !== 'correo') return;
@@ -346,6 +396,8 @@ async function cerrar(confirmar) {
 
 async function iniciar() {
   try { await evaluarAcceso(); } catch (e) { s.errorPin = e.message; }
+  const destino = { '#ventas': 'Ventas', '#cierres': 'Cierres', '#bodega': 'Bodega', '#compras': 'Compras' }[location.hash]; // al tocar un aviso se abre la pantalla que corresponde
+  if (destino && s.usuario && esAdmin()) s.pestana = destino;
   await pintar();
 }
 iniciar();

@@ -12,9 +12,9 @@ const NOMBRE_TIPO = { ...GRUPOS_COMPRA };
 const norm = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export function resultadosBusqueda(proveedores, texto) {
   const q = norm(texto).trim(); if (!q) return '';
-  const hallados = proveedores.filter((p) => norm(p.nombre).includes(q) || String(p.cedula).includes(q));
+  const hallados = proveedores.filter((p) => norm(p.nombre).includes(q) || norm(p.legal).includes(q) || String(p.cedula).includes(q));
   if (!hallados.length) return '<p class="pie">Ningún proveedor tiene ese nombre.</p>';
-  return `<ul class="lista busca-res">${hallados.slice(0, 8).map((p) => `<li><button class="fila-art" data-accion="elegir-prov" data-valor="${esc(p.cedula)}"><span class="a-nom">${esc(p.nombre)}</span></button></li>`).join('')}</ul>${hallados.length > 8 ? `<p class="pie">Hay ${hallados.length} coincidencias; escriba más del nombre para acotar.</p>` : ''}`;
+  return `<ul class="lista busca-res">${hallados.slice(0, 8).map((p) => `<li><button class="fila-art" data-accion="elegir-prov" data-valor="${esc(p.cedula)}"><span class="a-nom">${esc(p.nombre)}${p.legal && p.legal !== p.nombre ? `<small class="legal">${esc(p.legal)}</small>` : ''}</span></button></li>`).join('')}</ul>${hallados.length > 8 ? `<p class="pie">Hay ${hallados.length} coincidencias; escriba más del nombre para acotar.</p>` : ''}`;
 }
 
 export const POR = [['dia', 'Día'], ['semana', 'Semana'], ['mes', 'Mes']];
@@ -38,7 +38,7 @@ function ticks(max) {
 }
 
 // Grafico de barras apiladas: neto (sin IVA) + IVA = total (con IVA). Cronologico de izquierda a derecha.
-export function graficoBarras(filas, por) {
+export function graficoBarras(filas, por, rotulo = 'Compras', titulos = TITULO_POR) {
   const W = 640, H = 290, ml = 74, mr = 10, mt = 14, mb = 54;
   const pw = W - ml - mr, ph = H - mt - mb;
   const maxVal = Math.max(0, ...filas.map((f) => f.total));
@@ -49,12 +49,12 @@ export function graficoBarras(filas, por) {
   const barras = filas.map((f, i) => {
     const cx = ml + bw * i + bw / 2, neto = Math.max(f.neto, 0), iva = Math.max(f.iva, 0);
     const yn = y(neto), yt = y(neto + iva);
-    return `<g><title>${esc(corto(f.clave))}: total con IVA ${colones(f.total)}, neto sin IVA ${colones(f.neto)}, IVA ${colones(f.iva)}, ${f.facturas} facturas</title>
+    return `<g><title>${esc(corto(f.clave))}: total con IVA ${colones(f.total)}, neto sin IVA ${colones(f.neto)}, IVA ${colones(f.iva)}, ${f.facturas} ${rotulo === 'Compras' ? 'facturas' : 'documentos'}</title>
       <rect x="${cx - ancho / 2}" y="${yn}" width="${ancho}" height="${Math.max(ph + mt - yn, 0)}" fill="var(--acento)" rx="2"/>
       ${iva > 0 ? `<rect x="${cx - ancho / 2}" y="${yt}" width="${ancho}" height="${Math.max(yn - yt, 0)}" fill="var(--acento-fondo)" stroke="var(--acento)" stroke-width="1" rx="2"/>` : ''}
       <text x="${cx}" y="${H - mb + 18}" text-anchor="middle" class="g-tx">${esc(etiquetaX(f.clave, por, i, filas.length))}</text></g>`;
   }).join('');
-  return `<svg class="grafico" viewBox="0 0 ${W} ${H}" role="img" aria-label="Compras ${TITULO_POR[por]}. Barras de izquierda (más antiguo) a derecha (más reciente)">
+  return `<svg class="grafico" viewBox="0 0 ${W} ${H}" role="img" aria-label="${rotulo} ${titulos[por]}. Barras de izquierda (más antiguo) a derecha (más reciente)">
     ${rejilla}${barras}
     <line x1="${ml}" x2="${W - mr}" y1="${y(0)}" y2="${y(0)}" stroke="var(--linea-fuerte)"/>
     <text x="${ml + pw / 2}" y="${H - 6}" text-anchor="middle" class="g-eje">${EJE_X[por]}, de más antiguo a más reciente</text>
@@ -87,6 +87,7 @@ function filaFactura(c, abierta, lineas) {
       <div class="fila"><span class="etq">IVA</span><b class="num">${dinero(c.iva, c.moneda)}</b></div>
       <div class="fila total"><span>Total, con IVA incluido</span><b class="num">${dinero(c.total, c.moneda)}</b></div>
       ${c.moneda !== 'CRC' ? `<div class="fila"><span class="etq">Equivalente en colones</span><b class="num">${colones(c.totalCrc)}</b></div>` : ''}
+      ${c.proveedorLegal && c.proveedorLegal !== c.proveedor ? `<div class="fila"><span class="etq">Razón social</span><b>${esc(c.proveedorLegal)}</b></div>` : ''}
       <div class="fila"><span class="etq">Documento</span><b>${esc(CLASES_COMPRA[c.clase] || c.clase)}</b></div>
       <div class="fila"><span class="etq">Tipo de proveedor</span><b>${esc(NOMBRE_TIPO[c.tipoProveedor] || c.tipoProveedor)}</b></div>
       <div class="fila"><span class="etq">Clasificación principal</span><b>${esc(c.rubro)}</b></div>
@@ -108,29 +109,41 @@ function barrasDesglose(titulo, filas, nombre = (x) => x, nota = '') {
   return `<section class="tarjeta"><h2>${titulo}</h2><ul class="lista">${cuerpo}</ul>${nota ? `<p class="pie">${nota}</p>` : ''}</section>`;
 }
 
-export function vistaCompras({ lineas, hoy, negociosPermitidos, filtro, proveedores, resumen, ultimas, por, grafico, rango, tipos, rubros, provs, abierta, vivo, error }) {
+export const PERIODOS = [['ultimas', 'Últimas'], ['hoy', 'Hoy'], ['semana', 'Semana'], ['mes', 'Mes']];
+const TITULO_PERIODO = { ultimas: 'las últimas', hoy: 'de hoy', semana: 'de esta semana', mes: 'de este mes' };
+const filaProveedor = (p) => `<li><button class="fila-art" data-accion="elegir-prov" data-valor="${esc(p.cedula)}"><span class="a-nom">${esc(p.nombre)}${p.legal && p.legal !== p.nombre ? `<small class="legal">${esc(p.legal)}</small>` : ''}</span><span class="a-der num">${colones(p.total)}<small class="legal">${p.facturas} ${p.facturas === 1 ? 'factura' : 'facturas'}</small></span></button></li>`;
+
+export function vistaCompras({ lineas, hoy, negociosPermitidos, filtro, proveedores, resumen, ultimas, por, grafico, rango, tipos, rubros, provs, abierta, vivo, error, provsPeriodo = [] }) {
   const opcionesNeg = [['ambos', 'Ambos'], ...negociosPermitidos.map((n) => [n.id, n.nombre.replace(' La Bomba', '')])];
   const fichasNeg = opcionesNeg.length > 2
     ? `<div class="fichas" role="group" aria-label="Negocio">${opcionesNeg.map(([k, t]) => `<button class="ficha" data-accion="filtro-negocio" data-valor="${k}" aria-pressed="${filtro.neg === k}">${t}</button>`).join('')}</div>` : '';
   const selProv = `<select id="f-proveedor" aria-label="Proveedor"><option value="">Todos los proveedores</option>${proveedores.map((p) => `<option value="${esc(p.cedula)}" ${p.cedula === filtro.proveedor ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select>`;
+  const selRubro = `<select id="f-rubro" aria-label="Clasificación"><option value="">Todas las clasificaciones</option>${[...rubros].sort((a, b) => String(a.etiqueta).localeCompare(String(b.etiqueta), 'es')).map((r) => `<option value="${esc(r.clave)}" ${r.clave === filtro.rubro ? 'selected' : ''}>${esc(r.etiqueta)}</option>`).join('')}</select>`;
+  const fichasPeriodo = `<div class="fichas segmento cuatro" role="group" aria-label="Periodo de las facturas">${PERIODOS.map(([k, t]) => `<button class="ficha" data-accion="periodo" data-valor="${k}" aria-pressed="${(filtro.periodo || 'ultimas') === k}">${t}</button>`).join('')}</div>`;
+  const periodo = filtro.periodo || 'ultimas';
+  const nombreFiltro = [filtro.rubro ? `clasificación «${filtro.rubro}»` : '', filtro.proveedor ? `proveedor «${(proveedores.find((p) => p.cedula === filtro.proveedor) || {}).nombre || ''}»` : ''].filter(Boolean).join(', ');
   let facturas = '', ultimoDia = '';
   for (const c of ultimas) {
     if (c.dia !== ultimoDia) { ultimoDia = c.dia; facturas += `<li class="separador-dia">${c.dia === hoy ? 'Hoy, ' : ''}${esc(fechaLarga(c.dia))}</li>`; }
     facturas += filaFactura(c, abierta === c.clave, lineas && lineas[c.clave]);
   }
   return `${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
-    <div class="barra-filtros">${fichasNeg}${selProv}</div>
+    <div class="barra-filtros">${fichasNeg}${selProv}${selRubro}</div>
     <div class="busca-prov"><input id="f-busca" type="search" autocomplete="off" placeholder="Buscar proveedor por nombre (comercial, persona física o jurídica)" value="${esc(filtro.busca || '')}"><div id="f-resultados">${resultadosBusqueda(proveedores, filtro.busca)}</div></div>
     <div class="cuadricula tres">${tarjetaResumen('Hoy', resumen.hoy)}${tarjetaResumen('Esta semana', resumen.semana)}${tarjetaResumen('Este mes', resumen.mes)}</div>
     <p class="pie">Cifras brutas con IVA incluido y netas sin IVA, en colones. La semana empieza el lunes.</p>
     <div class="columnas">
-      <section class="tarjeta"><div class="cierre-cab"><h2 style="margin:0">Últimas facturas</h2><span class="vivo ${vivo ? 'on' : ''}" data-id="vivo"><i class="punto"></i>${vivo ? 'Actualizado ahora' : 'En vivo'}</span></div>
+      <section class="tarjeta"><div class="cierre-cab"><h2 style="margin:0">Facturas ${TITULO_PERIODO[periodo]}</h2><span class="vivo ${vivo ? 'on' : ''}" data-id="vivo"><i class="punto"></i>${vivo ? 'Actualizado ahora' : 'En vivo'}</span></div>
+        ${fichasPeriodo}${nombreFiltro ? `<p class="etq" style="margin:0 0 8px">Mostrando ${esc(nombreFiltro)}. Para quitar un filtro, elija «Todos» o «Todas» arriba.</p>` : ''}
         <ul class="lista facturas">${facturas || '<li class="vacio">No hay facturas con este filtro.</li>'}</ul>
         <p class="pie">Lo más reciente primero. Toque una factura para ver el detalle. “Sin responder” significa que aún no se contestó a Hacienda.</p></section>
       <section class="tarjeta"><div class="cierre-cab"><h2 style="margin:0">Compras ${TITULO_POR[por]}</h2></div>
         <div class="fichas segmento" role="group" aria-label="Agrupar por">${POR.map(([k, t]) => `<button class="ficha" data-accion="por" data-valor="${k}" aria-pressed="${por === k}">${t}</button>`).join('')}</div>
         ${graficoBarras(grafico, por)}</section>
     </div>
+    <h2 class="titulo-seccion">Por proveedor, ${periodo === 'hoy' ? 'hoy' : periodo === 'semana' ? 'esta semana' : 'este mes'}${filtro.rubro ? `, solo «${esc(filtro.rubro)}»` : ''}</h2>
+    <section class="tarjeta"><ul class="lista busca-res">${provsPeriodo.length ? provsPeriodo.map(filaProveedor).join('') : '<li class="vacio">Ningún proveedor tiene facturas en este periodo con este filtro.</li>'}</ul>
+      <p class="pie">En orden alfabético por nombre comercial (si el proveedor no tiene, se usa el legal). Toque uno para ver solo sus facturas. Montos con IVA incluido.</p></section>
     <h2 class="titulo-seccion">Desglose, ${esc(corto(rango.desde))} a ${esc(corto(rango.hasta))}</h2>
     <div class="cuadricula tres">
       ${barrasDesglose('Por tipo de proveedor', tipos, (k) => NOMBRE_TIPO[k] || k, 'El tipo sale de lo que más se le compra a cada proveedor.')}

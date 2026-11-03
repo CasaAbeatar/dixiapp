@@ -92,7 +92,10 @@ export function vistaCaja({ hoy, fecha, caja, act, esAdmin, form, sugerencias, a
   const abierta = caja?.estado === 'abierta';
   let panel = '';
   if (esHoy) {
-    if (!abierta) {
+    if (!abierta && esAdmin) {
+      panel = `<section class="tarjeta"><h2>${caja ? 'La caja está cerrada' : 'Todavía no hay caja abierta'}</h2>
+        <p class="etq" style="margin:0">${caja ? `La última cerró ${esc(caja.cerradaPor)} a las ${horaLegible(caja.cerradaA)} del ${esc(fechaLarga(caja.fecha))}. ` : ''}La caja la abren y la cierran las cajeras en el facturador.</p></section>`;
+    } else if (!abierta) {
       panel = `<section class="tarjeta"><h2>${caja ? 'La caja está cerrada' : 'Todavía no hay caja'}</h2>
         ${caja ? `<p class="etq" style="margin-top:0">La última cerró ${esc(caja.cerradaPor)} a las ${horaLegible(caja.cerradaA)} del ${esc(fechaLarga(caja.fecha))}.</p>` : ''}
         <label class="campo"><span>Fondo inicial <small>(lo que deja para empezar; puede ser ₡0)</small></span><div class="monto-wrap"><b>₡</b><input id="a-fondo" inputmode="numeric" autocomplete="off" placeholder="0" value="${esc(fondo)}"></div></label>
@@ -112,7 +115,7 @@ export function vistaCaja({ hoy, fecha, caja, act, esAdmin, form, sugerencias, a
         ${form ? formulario(form, sugerencias) : ''}`;
     }
   }
-  const cierreHtml = esHoy && abierta ? `<h2 class="titulo-seccion">Cerrar la caja</h2><section class="tarjeta" id="cierre">
+  const cierreHtml = esHoy && abierta && !esAdmin ? `<h2 class="titulo-seccion">Cerrar la caja</h2><section class="tarjeta" id="cierre">
       ${cierre?.faltante ? `<p class="error" role="alert"><b>Faltan ${colones(cierre.faltante)}</b> respecto a lo que debería haber. Cuente de nuevo. Si el conteo es correcto puede cerrar igual y queda registrado.</p>` : ''}
       ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
       <label class="campo"><span>Efectivo contado en caja</span><div class="monto-wrap"><b>₡</b><input id="c-contado" inputmode="numeric" autocomplete="off" placeholder="0" value="${esc(cierre?.contado ?? '')}"></div></label>
@@ -169,8 +172,37 @@ export function vistaCierres({ cierres, hayMas, semana }) {
 }
 
 // ---------- Más ----------
-export function vistaMas({ usuario, esAdmin, esPrueba, conBloqueo, negocios }) {
-  return `<h2 class="titulo-seccion">Sesión</h2><section class="tarjeta"><div class="fila"><span class="etq">Usuario</span><b>${esc(usuario.nombre)}</b></div>
+const MOTIVOS_AVISOS = {
+  ios_sin_instalar: 'Para recibir avisos en el iPhone, la app tiene que estar guardada en la pantalla de inicio (botón Compartir de Safari, luego «Agregar a pantalla de inicio») y abrirse desde ahí.',
+  sin_soporte: 'Este navegador no permite recibir avisos. En Android sirve Chrome; en iPhone, Safari con la app guardada en la pantalla de inicio.',
+  bloqueado: 'Los avisos están bloqueados en los ajustes de este teléfono para Dixiapp. Se activan desde los ajustes de notificaciones del teléfono.',
+};
+export const TIPOS_AVISO = [
+  ['cierre_turno', 'Cierre de turno', 'Quién cerró, cuánto se vendió y cómo quedó el efectivo.'],
+  ['diferencia_caja', 'Diferencia de caja', 'Solo cuando al cerrar sobró o faltó efectivo.'],
+  ['efectivo', 'Entradas y salidas de efectivo', 'Monto, motivo y quién lo registró.'],
+  ['resumen_diario', 'Resumen de ayer, 8:00 a. m.', 'Ventas de ayer por local frente al mismo día de la semana pasada.'],
+  ['cambio_precio', 'Cambio de precio de productos', 'Una vez al día, solo si algún producto que compra cambió de precio.'],
+  ['por_reponer', 'Productos por reponer', 'Una vez al día, solo si hay productos bajo el mínimo.'],
+];
+export const MINIMOS_EFECTIVO = [0, 10000, 25000, 50000];
+const aviso = (b, t) => `<div class="fila"><span><b>${t[1]}</b><br><span class="etq">${t[2]}</span></span>${boton('aviso-pref', (b.prefs[t[0]] ?? true) ? 'Activado' : 'Apagado', (b.prefs[t[0]] ?? true) ? 'bloque' : 'bloque peligro', `data-valor="${t[0]}" style="min-width:110px"`)}</div>`;
+function tarjetaAvisos(b) {
+  if (!b) return '';
+  let cuerpo;
+  if (b.motivo) cuerpo = `<p style="margin:0">${MOTIVOS_AVISOS[b.motivo] || ''}</p>`;
+  else if (!b.activo) cuerpo = `<p style="margin:0 0 12px">Recibirá en este teléfono un aviso corto cuando pase algo importante, aunque la app esté cerrada.</p>${boton('avisos-activar', 'Activar avisos')}`;
+  else {
+    const min = Number(b.prefs.efectivo_minimo || 0);
+    cuerpo = TIPOS_AVISO.map((t) => aviso(b, t)).join('')
+      + ((b.prefs.efectivo ?? true) ? `<div class="fila"><span><b>Efectivo: avisar desde</b><br><span class="etq">Toque para cambiar el monto mínimo.</span></span>${boton('aviso-min', min ? '₡' + min.toLocaleString('es-CR') : 'Todos', 'bloque', 'style="min-width:110px"')}</div>` : '')
+      + `<div class="acciones" style="margin-top:12px">${boton('avisos-probar', 'Enviar aviso de prueba')}${boton('avisos-desactivar', 'Desactivar en este teléfono', 'bloque peligro')}</div>`;
+  }
+  return `<h2 class="titulo-seccion">Avisos en este teléfono</h2><section class="tarjeta">${cuerpo}</section>`;
+}
+export function vistaMas({ usuario, esAdmin, esPrueba, conBloqueo, negocios, avisos }) {
+  return `${esAdmin ? tarjetaAvisos(avisos) : ''}`
+    + `<h2 class="titulo-seccion">Sesión</h2><section class="tarjeta"><div class="fila"><span class="etq">Usuario</span><b>${esc(usuario.nombre)}</b></div>
       <div class="fila"><span class="etq">Rol</span><b>${esAdmin ? 'Administrador' : 'Cajero'}</b></div>
       <div class="acciones" style="margin-top:12px">${conBloqueo ? boton('bloquear', 'Bloquear ahora') : '<span></span>'}${boton('salir', 'Salir de sesión')}</div></section>
     <h2 class="titulo-seccion">Próximas pantallas</h2><section class="tarjeta proximo"><p style="margin:0"><b>Aquí irán las pantallas nuevas.</b></p>

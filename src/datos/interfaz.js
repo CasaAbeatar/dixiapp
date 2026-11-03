@@ -39,12 +39,23 @@ export const METODOS = [
   'cierres',              // (negocioId, {limite}) => { items: Cierre[], hayMas }      [administrador]
   'resumenSemana',        // (negocioId) => { dias:[{fecha,entradas,salidas,neto}], entradas, salidas, neto } [administrador]
   // Compras (solo administradores)
-  'comprasProveedores',   // ({negocios}) => [{cedula, nombre}]
+  'comprasProveedores',   // ({negocios, desde, hasta, rubro}) => [{cedula, nombre (comercial si existe), legal, facturas, neto, iva, total}] por nombre
   'comprasLineas',        // (clave) => [{linea, detalle, cantidad, unidad, precioUnitario, subtotal, impuesto, total}] (solo lectura)
-  'comprasUltimas',       // ({negocios, proveedor, limite}) => Compra[] (mas reciente primero)
+  'comprasUltimas',       // ({negocios, proveedor, rubro, desde, hasta, limite}) => Compra[] (mas reciente primero)
   'comprasResumen',       // ({negocios, proveedor}) => { hoy, semana, mes } cada uno { facturas, neto, iva, total }
   'comprasAgrupadas',     // ({negocios, desde, hasta, por, proveedor}) => [{clave, etiqueta, facturas, neto, iva, total}]
   'comprasSuscribir',     // (callback) => funcion para cancelar (tiempo real)
+  // Ventas (solo administradores, solo consulta; salen del facturador con la misma regla de la caja: ventas facturadas menos notas de credito mas notas de debito)
+  'ventasEnVivo',         // ({negocios}) => { generado, negocios: [{negocioId, turno: {estado, desde, hasta, abiertaPor, cerradaPor, terminal, participantes:[{usuario, nombre, abrio, ventas, notas, total}], total, iva, neto, docs}|null  (turno del FACTURADOR: lo abre la cajera y dentro facturan tambien administrador y hermana), hoy, semana, mes}] } cada bloque {total, iva, neto, docs}; total = con IVA
+  'ventasAgrupadas',      // ({negocios, desde, hasta, por: 'dia'|'semana'|'mes'}) => [{clave, etiqueta, facturas, neto, iva, total}]  (facturas = documentos de venta)
+  'ventasTop',            // ({negocios, desde, hasta, limite=5}) => { desde, hasta, mas:[{nombre, unidades, total}], menos:[{nombre, unidades, total}] (los que SI se vendieron; sin repetir los de 'mas'), vendidos, menuTotal, sinVentas|null }; total = con IVA
+  'ventasPorHora',        // ({negocios, fecha}) => { fecha, semanas (cuantos de los 4 mismos dias anteriores tuvieron ventas), horas:[{hora 0..23, hoy, promedio|null, docs}] }; con IVA, hora de Costa Rica
+  'avisosEstado',         // () => {motivo:''|'ios_sin_instalar'|'sin_soporte'|'bloqueado', activo, prefs}
+  'avisosActivar',        // () => {activo, prefs}   (pide el permiso del telefono)
+  'avisosDesactivar',     // () => void
+  'avisosGuardarPrefs',   // (prefs) => prefs
+  'avisosProbar',         // () => void   (manda un aviso de prueba)
+  'ventasSuscribir',      // (callback) => funcion para cancelar (se avisa cada pocos segundos mientras este abierta)
   // Bodega (solo administradores): se apoya en el inventario del facturador (fact.inv_*), sin duplicarlo
   'bodegaUbicaciones',    // () => [{id, nombre, tipo: 'bodega'|'local'}]
   'bodegaExistencias',    // ({ubicacion, q}) => [{articuloId, articulo, categoria, unidad, ubicacionId, ubicacion, cantidad, minimo, bajoMinimo, vencida, proximoVencimiento}]

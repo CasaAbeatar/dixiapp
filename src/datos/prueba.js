@@ -2,9 +2,9 @@
 // Cumple el mismo contrato que supabase.js (ver interfaz.js), incluida la regla de informacion ciega.
 import { validarImplementacion } from './interfaz.js';
 import { efectivoEsperado, totalesMovimientos } from './calculos.js';
-import { aTexto, horaTexto, sumarDias, diasDeLaSemana } from './fechas.js';
+import { aTexto, horaTexto, sumarDias, diasDeLaSemana, deTexto, lunesDe } from './fechas.js';
 import { crearBodegaPrueba } from './prueba-bodega.js';
-import { agruparCompras, resumenDesdeDias, desdeResumen } from './compras-calc.js';
+import { nombreComercial, nombreLegal, comparaNombres, agruparCompras, resumenDesdeDias, desdeResumen, inicioMes, inicioPeriodo } from './compras-calc.js';
 
 const CLAVE = 'dixiapp.prueba.v2';
 const CLAVE_SESION = 'dixiapp.sesion.v2';
@@ -29,10 +29,10 @@ const SEMILLA_MOTIVOS = {
 };
 // Proveedores ficticios (nombres inventados)
 export const PROVEEDORES = [
-  { cedula: '3-101-900001', nombre: 'Avícola Central (ficticio)', tipo: 'comida_preparada', iva: 0.01, rubros: [['Pollo', 'comida_preparada', 1]] },
-  { cedula: '3-101-900002', nombre: 'Carnes del Valle (ficticio)', tipo: 'comida_preparada', iva: 0.01, rubros: [['Carnes', 'comida_preparada', 1]] },
+  { cedula: '3-101-900001', nombre: 'Avícola Central S.A. (Pollos El Valle)', tipo: 'comida_preparada', iva: 0.01, rubros: [['Pollo', 'comida_preparada', 1]] },
+  { cedula: '3-101-900002', nombre: 'Ganadera Santa Elia S.A. (Carnes Maroto)', tipo: 'comida_preparada', iva: 0.01, rubros: [['Carnes', 'comida_preparada', 1]] },
   { cedula: '3-101-900003', nombre: 'Verduras Don Beto (ficticio)', tipo: 'comida_preparada', iva: 0, rubros: [['Verduras', 'comida_preparada', 1]] },
-  { cedula: '3-101-900004', nombre: 'Bebidas del Norte (ficticio)', tipo: 'unitario', iva: 0.13, rubros: [['Bebidas', 'unitario', 0.8], ['Snacks', 'unitario', 0.2]] },
+  { cedula: '3-101-900004', nombre: 'Distribuidora BAK S.A. (Bebidas del Norte)', tipo: 'unitario', iva: 0.13, rubros: [['Bebidas', 'unitario', 0.8], ['Snacks', 'unitario', 0.2]] },
   { cedula: '3-101-900005', nombre: 'Empaques y Desechables (ficticio)', tipo: 'suministro', iva: 0.13, rubros: [['Empaques', 'suministro', 0.7], ['Limpieza', 'suministro', 0.3]] },
   { cedula: '3-101-900006', nombre: 'Gas Nacional (ficticio)', tipo: 'suministro', iva: 0.13, rubros: [['Gas', 'suministro', 1]] },
   { cedula: '3-101-900007', nombre: 'Ferretería La Esquina (ficticio)', tipo: 'otros', iva: 0.13, rubros: [['Sin clasificar', 'otros', 1]] },
@@ -130,6 +130,47 @@ function almacenPorDefecto() {
   return almacenMemoria();
 }
 
+// Ventas ficticias por dia y negocio: estables (salen de la fecha), con el dia de hoy a medias segun la hora.
+function ventasDelDia(negocio, fecha, hoyTexto, ahoraFecha) {
+  let x = 0; for (const ch of negocio + fecha) x = (x * 31 + ch.charCodeAt(0)) % 100003;
+  const base = negocio === 'pollos' ? 410000 : 320000, dia = deTexto(fecha).getDay();
+  let total = Math.round((base * (0.7 + (x % 60) / 100) * (dia === 0 || dia === 6 ? 1.25 : 1)) / 100) * 100;
+  if (fecha > hoyTexto) return 0;
+  if (fecha === hoyTexto) total = Math.round(total * Math.min(1, Math.max(0.08, (ahoraFecha.getHours() - 8) / 12)));
+  return total;
+}
+
+// Menu ficticio para "lo mas y lo menos vendido": cada producto lleva su parte de las ventas del dia (estable; los de parte minima a veces no se venden)
+const MENU_PRUEBA = {
+  soda: [['Casado de pollo', 4000, 22], ['Casado de chuleta', 4000, 15], ['Gallo pinto con huevo', 2500, 12], ['Hamburguesa clásica', 2775, 11], ['Slice de pizza', 1600, 14], ['Refresco natural', 1000, 9], ['Sopa de mariscos grande', 5800, 4], ['Arroz con leche', 1300, 2], ['Tacos especial', 3975, 3], ['Plato para niños hamburguesa', 1000, 1.5], ['Pastel de tres leches', 2200, 0.6], ['Olla de carne mediana', 4200, 0.4]],
+  pollos: [['Pechuga y ala', 2300, 24], ['Pollo frito, combo familiar', 9800, 12], ['Papas fritas grandes', 2200, 16], ['Papas fritas pequeñas', 1200, 9], ['Hamburguesa de pollo', 2775, 10], ['Refresco natural', 1000, 9], ['Tropical té negro sabores 500 mL', 1000, 12], ['Balde de arroz con pollo', 28500, 1.2], ['Quesoburguesa', 2600, 3], ['Ensalada de repollo', 900, 0.8], ['Milkshake Oreo', 2975, 0.5], ['Caldosa de pescado', 1500, 0.3]],
+};
+function topDelRango(negocios, desde, hasta, hoyTexto, ahoraFecha) {
+  const acum = new Map(); let menuTotal = new Set();
+  for (const n of negocios) {
+    const total = MENU_PRUEBA[n].reduce((a, p) => a + p[2], 0);
+    for (const p of MENU_PRUEBA[n]) menuTotal.add(p[0]);
+    for (let d = desde; d <= hasta; d = sumarDias(d, 1)) {
+      const dia = ventasDelDia(n, d, hoyTexto, ahoraFecha);
+      for (const [nombre, precio, parte] of MENU_PRUEBA[n]) {
+        const u = Math.floor((dia * parte) / total / precio);
+        if (u > 0) { const a = acum.get(nombre) || { nombre, unidades: 0, total: 0 }; a.unidades += u; a.total += u * precio; acum.set(nombre, a); }
+      }
+    }
+  }
+  return { vendidos: [...acum.values()], menuTotal: menuTotal.size };
+}
+// Reparto del dia por hora (almuerzo y tarde fuertes) para el grafico de horas fuertes
+const PESO_HORA = { 6: 1, 7: 3, 8: 4, 9: 4, 10: 5, 11: 12, 12: 18, 13: 14, 14: 8, 15: 5, 16: 6, 17: 9, 18: 12, 19: 10, 20: 6, 21: 3 };
+function bloqueVentas(total, estado, desde) {
+  const iva = Math.round((total * 13) / 113);
+  return { total, iva, neto: total - iva, docs: Math.round(total / 3800), estado, desde };
+}
+function ventasDeRango(negocio, desde, hasta, hoyTexto, ahoraFecha) {
+  let total = 0; for (let d = desde; d <= hasta; d = sumarDias(d, 1)) total += ventasDelDia(negocio, d, hoyTexto, ahoraFecha);
+  return bloqueVentas(total);
+}
+
 export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => new Date(), simular = false } = {}) {
   const hoy = () => aTexto(ahora());
   const guardar = (e) => almacen.setItem(CLAVE, JSON.stringify(e));
@@ -169,7 +210,8 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
     const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
     return e.compras.filter((c) => ids.includes(c.negocioId));
   };
-  const publicaCompra = ({ rubros, ...c }) => c;
+  const publicaCompra = ({ rubros, ...c }) => ({ ...c, proveedor: nombreComercial(c.proveedor), proveedorLegal: nombreLegal(c.proveedor) });
+  const enRango = (c, desde, hasta) => (!desde || c.dia >= desde) && (!hasta || c.dia <= hasta);
 
   const { reiniciarBodega, ...metodosBodega } = crearBodegaPrueba({ almacen, hoy, ahora, exigirAdmin, nombreUsuario: () => usuario()?.nombre || 'Sistema' });
 
@@ -200,6 +242,7 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
     },
     async abrirCaja(negocioId, { fondoInicial }) {
       const u = exigir(); exigirNegocio(u, negocioId); const e = leer();
+      if (u.rol === 'administrador') throw new Error('El cierre y la apertura de caja los hacen las cajeras en el facturador, no en esta app.');
       if (!Number.isInteger(fondoInicial) || fondoInicial < 0) throw new Error('El fondo inicial debe ser un monto entero en colones (puede ser cero).');
       if (cajaAbierta(e, negocioId)) throw new Error('Ya hay una caja abierta en este negocio.');
       const c = { id: `caja-${e.siguiente++}`, negocioId, fecha: hoy(), abiertaA: horaTexto(ahora()), abiertaPor: u.nombre, fondoInicial, estado: 'abierta', ventas: { efectivo: 0, tarjeta: 0, sinpe: 0, transferencia: 0 } };
@@ -243,6 +286,7 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
     },
     async cerrarCaja(negocioId, { contado, confirmarFaltante = false }) {
       const u = exigir(); exigirNegocio(u, negocioId);
+      if (u.rol === 'administrador') throw new Error('El cierre y la apertura de caja los hacen las cajeras en el facturador, no en esta app.');
       if (!Number.isInteger(contado) || contado < 0) throw new Error('El efectivo contado debe ser un monto entero en colones');
       const e = leer(); const caja = cajaAbierta(e, negocioId);
       if (!caja) throw new Error('La caja ya está cerrada');
@@ -263,29 +307,87 @@ export function crearDatosPrueba({ almacen = almacenPorDefecto(), ahora = () => 
       const dias = diasDeLaSemana(hoy()).map((fecha) => ({ fecha, ...totalesMovimientos(e.movimientos.filter((m) => m.negocioId === negocioId && m.fecha === fecha)) }));
       return { dias, entradas: dias.reduce((a, d) => a + d.entradas, 0), salidas: dias.reduce((a, d) => a + d.salidas, 0), neto: dias.reduce((a, d) => a + d.neto, 0) };
     },
-    async comprasProveedores({ negocios } = {}) {
-      const u = exigirAdmin(); const m = new Map();
-      for (const c of comprasVisibles(leer(), u, negocios)) m.set(c.proveedorCedula, c.proveedor);
-      return [...m].map(([cedula, nombre]) => ({ cedula, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    async comprasProveedores({ negocios, desde = null, hasta = null, rubro = null } = {}) {
+      const u = exigirAdmin();
+      const filas = agruparCompras(comprasVisibles(leer(), u, negocios), { desde: desde || '2000-01-01', hasta: hasta || '2999-12-31', por: 'proveedor', rubro });
+      const legal = new Map(); for (const c of comprasVisibles(leer(), u, negocios)) legal.set(c.proveedorCedula, nombreLegal(c.proveedor));
+      return filas.map((f) => ({ cedula: f.clave, nombre: f.etiqueta, legal: legal.get(f.clave) || f.etiqueta, facturas: f.facturas, neto: f.neto, iva: f.iva, total: f.total })).sort((a, b) => comparaNombres(a.nombre, b.nombre));
     },
     async comprasLineas(clave) {
       return [{ linea: 1, detalle: 'Pechuga de pollo sin hueso', cantidad: 20, unidad: 'kg', precioUnitario: 3900, subtotal: 78000, impuesto: 0, total: 78000 },
         { linea: 2, detalle: 'Aceite vegetal 18 L', cantidad: 2, unidad: 'unidad', precioUnitario: 21500, subtotal: 43000, impuesto: 5590, total: 48590 }];
     },
-    async comprasUltimas({ negocios, proveedor = null, limite = 8 } = {}) {
+    async comprasUltimas({ negocios, proveedor = null, rubro = null, desde = null, hasta = null, limite = 8 } = {}) {
       const u = exigirAdmin();
-      return comprasVisibles(leer(), u, negocios).filter((c) => !proveedor || c.proveedorCedula === proveedor)
+      return comprasVisibles(leer(), u, negocios).filter((c) => (!proveedor || c.proveedorCedula === proveedor) && enRango(c, desde, hasta)
+        && (!rubro || (c.rubros || []).some((r) => r.rubro === rubro && (r.neto !== 0 || r.iva !== 0))))
         .sort((a, b) => (b.dia + b.hora + b.clave).localeCompare(a.dia + a.hora + a.clave)).slice(0, limite).map(publicaCompra);
     },
-    async comprasResumen({ negocios, proveedor = null } = {}) {
+    async comprasResumen({ negocios, proveedor = null, rubro = null } = {}) {
       const u = exigirAdmin(); const h = hoy();
-      const dias = agruparCompras(comprasVisibles(leer(), u, negocios), { desde: desdeResumen(h), hasta: h, por: 'dia', proveedor });
+      const dias = agruparCompras(comprasVisibles(leer(), u, negocios), { desde: desdeResumen(h), hasta: h, por: 'dia', proveedor, rubro });
       return resumenDesdeDias(dias, h);
     },
-    async comprasAgrupadas({ negocios, desde, hasta, por, proveedor = null }) {
+    async comprasAgrupadas({ negocios, desde, hasta, por, proveedor = null, rubro = null }) {
       const u = exigirAdmin();
-      return agruparCompras(comprasVisibles(leer(), u, negocios), { desde, hasta, por, proveedor });
+      return agruparCompras(comprasVisibles(leer(), u, negocios), { desde, hasta, por, proveedor, rubro });
     },
+    // ---------- Ventas en vivo (datos ficticios y estables: el mismo dia da la misma cifra) ----------
+    async ventasEnVivo({ negocios } = {}) {
+      const u = exigirAdmin(); const h = hoy(); const e = leer();
+      const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
+      const suma = (n, desde, hasta) => ventasDeRango(n, desde, hasta, h, ahora());
+      return { generado: ahora().toISOString(), negocios: ids.map((n) => {
+        const caja = e.cajas.filter((c) => c.negocioId === n).slice(-1)[0];
+        const bt = caja ? bloqueVentas(Object.values(caja.ventas || {}).reduce((x, y) => x + (Number(y) || 0), 0), caja.estado, caja.fecha) : null;
+        // En el turno de la cajera tambien facturan el administrador y la hermana de vez en cuando: el turno dice quien hizo que
+        const turno = caja ? { ...bt, abiertaPor: 'Gisela (cajera)', cerradaPor: caja.estado === 'cerrada' ? 'Yarixa (cajera)' : null, desdeHora: caja.abiertaA || null, terminal: 1,
+          participantes: [{ usuario: 'gisela', nombre: 'Gisela (cajera)', abrio: true, ventas: Math.max(bt.docs - 3, 0), notas: 1, total: bt.total - Math.round(bt.total * 0.04) },
+            { usuario: 'emil', nombre: 'Emil Martínez', abrio: false, ventas: 3, notas: 1, total: Math.round(bt.total * 0.04) }] } : null;
+        return { negocioId: n, turno, hoy: suma(n, h, h), semana: suma(n, lunesDe(h), h), mes: suma(n, inicioMes(h), h) };
+      }) };
+    },
+    async ventasAgrupadas({ negocios, desde, hasta, por }) {
+      const u = exigirAdmin(); const h = hoy();
+      const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
+      const grupos = new Map();
+      for (let d = desde; d <= hasta; d = sumarDias(d, 1)) {
+        const k = inicioPeriodo(d, por); const g = grupos.get(k) || { clave: k, etiqueta: k, facturas: 0, neto: 0, iva: 0, total: 0 };
+        for (const n of ids) { const v = ventasDeRango(n, d, d, h, ahora()); g.facturas += v.docs; g.neto += v.neto; g.iva += v.iva; g.total += v.total; }
+        grupos.set(k, g);
+      }
+      return [...grupos.values()].map((g) => ({ ...g, neto: Math.round(g.neto), iva: Math.round(g.iva), total: Math.round(g.total) })).sort((a, b) => a.clave.localeCompare(b.clave));
+    },
+    async ventasTop({ negocios, desde, hasta, limite = 5 }) {
+      const u = exigirAdmin(); const h = hoy();
+      const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
+      const { vendidos, menuTotal } = topDelRango(ids, desde, hasta, h, ahora());
+      const dinero = vendidos.map((p) => ({ ...p, total: Math.round(p.total) }));
+      const mas = dinero.slice().sort((a, b) => b.total - a.total || b.unidades - a.unidades || a.nombre.localeCompare(b.nombre)).slice(0, limite);
+      const nombresMas = new Set(mas.map((p) => p.nombre));
+      const menos = dinero.filter((p) => !nombresMas.has(p.nombre)).sort((a, b) => a.total - b.total || a.unidades - b.unidades || b.nombre.localeCompare(a.nombre)).slice(0, limite);
+      return { desde, hasta, mas, menos, vendidos: dinero.length, menuTotal, sinVentas: menuTotal - dinero.length };
+    },
+    async ventasPorHora({ negocios, fecha }) {
+      const u = exigirAdmin(); const h = hoy(); const hora = ahora().getHours();
+      const ids = (negocios && negocios.length ? negocios : u.negocios).filter((n) => u.negocios.includes(n));
+      const suma = (d) => ids.reduce((a, n) => a + ventasDelDia(n, d, '9999-12-31', ahora()), 0);
+      const previos = [7, 14, 21, 28].map((k) => sumarDias(fecha, -k)).filter((d) => d < h || fecha < h);
+      const peso = (x) => PESO_HORA[x] || 0, sumaPesos = Object.values(PESO_HORA).reduce((a, b) => a + b, 0);
+      const promedioDia = previos.length ? previos.reduce((a, d) => a + suma(d), 0) / previos.length : null;
+      const horas = Array.from({ length: 24 }, (_, x) => ({ hora: x, docs: 0,
+        hoy: fecha > h || (fecha === h && x > hora) ? 0 : Math.round((suma(fecha) * peso(x)) / sumaPesos / 100) * 100,
+        promedio: promedioDia == null ? null : Math.round((promedioDia * peso(x)) / sumaPesos / 100) * 100 }));
+      horas.forEach((x) => { x.docs = Math.round(x.hoy / 3800); });
+      return { fecha, semanas: previos.length, horas };
+    },
+    // Avisos (simulados: en el modo de prueba no se manda nada al telefono)
+    async avisosEstado() { exigirAdmin(); const e = leer(); return { motivo: '', activo: !!e.avisos, prefs: e.avisos || {} }; },
+    async avisosActivar() { exigirAdmin(); const e = leer(); e.avisos = {}; guardar(e); return { motivo: '', activo: true, prefs: {} }; },
+    async avisosDesactivar() { exigirAdmin(); const e = leer(); e.avisos = null; guardar(e); },
+    async avisosGuardarPrefs(prefs) { exigirAdmin(); const e = leer(); e.avisos = { ...prefs }; guardar(e); return e.avisos; },
+    async avisosProbar() { exigirAdmin(); },
+    async ventasSuscribir(cb) { exigirAdmin(); const t = setInterval(() => cb({ tipo: 'pulso' }), 20000); return () => clearInterval(t); },
     async viajes() { exigir(); return (leer().viajes || []).slice().reverse(); },
     async viajeAgregar({ destino, fecha }) {
       const u = exigir(); if (!String(destino || '').trim() || !fecha) throw new Error('Falta el destino o la fecha');
