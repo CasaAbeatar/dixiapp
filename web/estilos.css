@@ -1,9 +1,15 @@
+@font-face { font-family: 'Colon'; src: url(fuentes/colon-400.woff2) format('woff2'); font-weight: 400; unicode-range: U+20A1; font-display: swap; }
+@font-face { font-family: 'Colon'; src: url(fuentes/colon-500.woff2) format('woff2'); font-weight: 500; unicode-range: U+20A1; font-display: swap; }
+@font-face { font-family: 'Colon'; src: url(fuentes/colon-600.woff2) format('woff2'); font-weight: 600; unicode-range: U+20A1; font-display: swap; }
+@font-face { font-family: 'Colon'; src: url(fuentes/colon-700.woff2) format('woff2'); font-weight: 700; unicode-range: U+20A1; font-display: swap; }
+@font-face { font-family: 'Colon'; src: url(fuentes/colon-800.woff2) format('woff2'); font-weight: 800; unicode-range: U+20A1; font-display: swap; }
+/* El simbolo del colon (U+20A1) no existe en las fuentes de texto: se toma de Inter con el mismo grosor */
 :root {
   --fondo: #f6f7f9; --superficie: #ffffff; --texto: #0f1722; --suave: #5b6675; --linea: #dfe3ea; --linea-fuerte: #c3cad5;
   --acento: #2563eb; --acento-texto: #ffffff; --acento-fondo: #e8efff;
   --ok: #0f7a4f; --ok-fondo: #e3f5ec; --mal: #c5282d; --mal-fondo: #fdebec;
   --radio: 14px; --sombra: 0 1px 0 rgba(15,23,34,.03);
-  --tipo: -apple-system, "Helvetica Neue", Helvetica, "Segoe UI", Roboto, Arial, sans-serif;
+  --tipo: "Colon", -apple-system, "Helvetica Neue", Helvetica, "Segoe UI", Roboto, Arial, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema="claro"]) {
