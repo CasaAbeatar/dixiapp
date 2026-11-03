@@ -219,6 +219,8 @@ raiz.addEventListener('submit', async (ev) => {
 document.addEventListener('keydown', (ev) => {
   s.ultimo = Date.now();
   if (s.usuario || (datos.acceso === 'correo' && s.acceso === 'sin_sesion')) return;
+  const campo = document.getElementById('a-pin'); // entrada con campo propio: el campo recibe las teclas, este manejador no las repite
+  if (campo) { if (document.activeElement !== campo) campo.focus(); return; }
   if (/^\d$/.test(ev.key) && s.pin.length < 6) { s.pin += ev.key; s.errorPin = ''; pintar(); }
   else if (ev.key === 'Backspace') { s.pin = s.pin.slice(0, -1); pintar(); }
   else if (ev.key === 'Enter' && s.pin.length >= 4) intentarPin();
