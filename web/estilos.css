@@ -388,3 +388,27 @@ body { background:
 .tn .tn-detalle, .tn-lista > li { min-width: 0; max-width: 100%; }
 
 .tn-detalle .fila.texto b.num { white-space: normal; font-variant-numeric: normal; }
+
+/* Revision de cortes (3 nov 2026): nada se corta ni obliga a deslizar en celular */
+@media (max-width: 600px) {
+  .tabla-ancha { min-width: 0; font-size: 14px; }
+  .tabla-ancha th, .tabla-ancha td { padding-left: 8px; font-size: 14px; }
+  .tabla-ancha th:first-child, .tabla-ancha td:first-child { padding-left: 0; }
+  .pestana { font-size: 15px; padding: 0 2px; min-width: 0; }
+}
+@media (max-width: 340px) {
+  .pestana { font-size: 13px; }
+  .tabla-ancha, .tabla-ancha th, .tabla-ancha td { font-size: 12.5px; }
+  .tabla-ancha th, .tabla-ancha td { padding-left: 5px; }
+  .stepper { gap: 6px; flex-wrap: wrap; }
+  .stepper .btn { min-width: 52px; }
+  .stepper input { width: 80px; }
+}
+@media (max-width: 900px) { .ini-kpis { grid-template-columns: 1fr; } .ini-k { min-height: 0; } }
+@media (max-width: 420px) {
+  .barra-filtros .fichas { gap: 6px; flex-wrap: nowrap; }
+  .barra-filtros .ficha, .selector-negocio .ficha { min-width: 0; padding: 8px 6px; font-size: 15px; }
+  .stepper { gap: 6px; } .stepper .btn { min-width: 54px; } .stepper input { width: 84px; }
+}
+.segmento { grid-template-columns: repeat(3, minmax(0, 1fr)); } .segmento.cuatro { grid-template-columns: repeat(4, minmax(0, 1fr)); } .segmento .ficha { min-width: 0; }
+@media (max-width: 420px) { .segmento .ficha { padding: 8px 4px; font-size: 15px; } }
