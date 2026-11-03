@@ -412,3 +412,7 @@ body { background:
 }
 .segmento { grid-template-columns: repeat(3, minmax(0, 1fr)); } .segmento.cuatro { grid-template-columns: repeat(4, minmax(0, 1fr)); } .segmento .ficha { min-width: 0; }
 @media (max-width: 420px) { .segmento .ficha { padding: 8px 4px; font-size: 15px; } }
+@media (max-width: 420px) { .pestana { font-size: 13.5px; padding: 0 1px; letter-spacing: -.1px; white-space: nowrap; } }
+@media (max-width: 340px) { .pestana { font-size: 12px; } }
+@media (max-width: 340px) { .pestanas { width: calc(100% - 8px); padding: 4px; } .pestanas-in { gap: 0; } .pestana { font-size: 11px; padding: 0; letter-spacing: -.2px; } }
+.pestana { flex: 1 1 auto; }

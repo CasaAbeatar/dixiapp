@@ -19,6 +19,7 @@ const medir = async (p, w, etq) => {
       else if (e.scrollWidth > e.clientWidth + 2 && ['hidden', 'clip'].includes(cs.overflowX) && e.clientWidth > 0) out.push(`contenido cortado (${e.scrollWidth} > ${e.clientWidth}): ${sel(e)} "${txt}"`);
       else if (cs.textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth + 1) out.push(`texto con «...»: ${sel(e)} "${txt}"`);
     }
+    for (const e of document.querySelectorAll('.pestana')) if (e.scrollWidth > e.clientWidth + 1) out.push(`etiqueta de pestana pisa a la vecina (${e.scrollWidth} > ${e.clientWidth}): "${e.textContent.trim()}"`);
     if (document.documentElement.scrollWidth > w + 1) out.push(`la pagina se desplaza horizontalmente (${document.documentElement.scrollWidth} > ${w})`);
     return [...new Set(out)].slice(0, 12);
   }, w);
