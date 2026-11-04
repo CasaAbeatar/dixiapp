@@ -418,3 +418,10 @@ body { background:
 .pestana { flex: 1 1 auto; }
 #sin-conexion{position:fixed;left:0;right:0;top:0;z-index:60;padding:calc(6px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right)) 6px max(12px,env(safe-area-inset-left));background:#171212;color:#fff;font-size:14px;text-align:center}
 #sin-conexion:not([hidden]) ~ #app{padding-top:34px}
+
+/* Bienvenida a pantalla completa (3 nov 2026): la foto cubre también la hora y la batería; en el resto de la app una banda sólida bajo la barra de estado mantiene legible la hora (texto blanco) */
+:root{--banda-estado:#7a3b12}
+@media (prefers-color-scheme: dark){:root:not([data-tema="claro"]){--banda-estado:#0e1116}}
+:root[data-tema="oscuro"]{--banda-estado:#0e1116}
+body::before{content:"";position:fixed;left:0;right:0;top:0;height:env(safe-area-inset-top,0px);background:var(--banda-estado);z-index:50;pointer-events:none}
+#splash{top:0;left:0;right:0;bottom:0;height:100vh;height:100dvh}
