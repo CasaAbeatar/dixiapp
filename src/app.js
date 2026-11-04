@@ -1,3 +1,5 @@
+// Antiencuadre: si otra pagina mete Dixiapp en un marco, no se muestra (GitHub Pages no deja poner frame-ancestors).
+if (window.top !== window.self) { document.documentElement.style.display = 'none'; try { window.top.location = window.self.location; } catch { /* sin permiso: queda oculto */ } }
 import './aviso-conexion.js';
 import { datos } from './datos/index.js';
 import { leerMonto, aplicarTema, esc } from './ui.js';
@@ -49,7 +51,7 @@ async function pintar() {
   } catch (e) {
     if (yo !== pintando) return;
     if (/No autorizado|sesión venció/i.test(e.message) && s.usuario) { s.usuario = null; s.acceso = await datos.estadoAcceso(); s.errorPin = 'Vuelva a entrar.'; return pintar(); }
-    s.error = e.message; raiz.innerHTML = `<div class="acceso"><div class="acceso-caja"><p class="error" role="alert">${e.message}</p><button class="btn bloque" data-accion="reintentar">Reintentar</button></div></div>`;
+    s.error = e.message; raiz.innerHTML = `<div class="acceso"><div class="acceso-caja"><p class="error" role="alert">${esc(e.message)}</p><button class="btn bloque" data-accion="reintentar">Reintentar</button></div></div>`;
   }
 }
 
@@ -327,8 +329,7 @@ raiz.addEventListener('input', (ev) => {
   if (id === 'v-destino' && s.viajeForm) s.viajeForm.destino = ev.target.value;
   if (id === 'v-fecha' && s.viajeForm) s.viajeForm.fecha = ev.target.value;
   if (id === 'a-pin') {
-    s.pin = ev.target.value.replace(/\D/g, '').slice(0, 4); ev.target.value = s.pin; s.errorPin = '';
-    if (s.pin.length === 4) intentarPin();
+    s.pin = ev.target.value.replace(/\D/g, '').slice(0, 32); ev.target.value = s.pin; s.errorPin = '';   // sin largo fijo y sin envio automatico: se envia con Enter o el boton «Entrar»
     return;
   }
   if (id === 'a-correo') s.correo = ev.target.value;
@@ -338,7 +339,7 @@ raiz.addEventListener('change', (ev) => {
   if (ev.target.id === 'f-rubro') { s.filtro.rubro = ev.target.value; s.abierta = null; pintar(); }
 });
 raiz.addEventListener('submit', async (ev) => {
-  if (ev.target.dataset.form === 'pin') { ev.preventDefault(); if (s.pin.length === 4) intentarPin(); return; }
+  if (ev.target.dataset.form === 'pin') { ev.preventDefault(); if (s.pin) intentarPin(); else { s.errorPin = 'Escriba su clave.'; pintar(); } return; }
   if (ev.target.dataset.form !== 'correo') return;
   ev.preventDefault();
   s.correo = document.getElementById('a-correo').value; const clave = document.getElementById('a-clave').value;

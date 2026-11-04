@@ -1,6 +1,6 @@
 // Service worker de Dixiapp: cachea SOLO la interfaz (archivos estaticos de esta lista).
 // Nunca guarda datos de caja: cualquier otra peticion (por ejemplo Supabase) va directo a la red.
-const VERSION = 'dixiapp-interfaz-v29';
+const VERSION = 'dixiapp-interfaz-v31';
 const INTERFAZ = [
   './', './index.html', './estilos.css', './manifest.webmanifest',
   './src/app.js', './src/vistas.js', './src/vistas-compras.js', './src/vistas-ventas.js', './src/vistas-cierres.js', './src/vistas-inicio.js', './src/mensajes.js', './src/vistas-bodega.js', './src/bodega.js', './src/ui.js', './vendor/supabase-js.js',
@@ -30,6 +30,7 @@ self.addEventListener('push', (e) => {
 });
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const destino = new URL((e.notification.data && e.notification.data.url) || './', self.location).href;
+  let destino = new URL('./', self.location).href;
+  try { const d = new URL((e.notification.data && e.notification.data.url) || './', self.location); if (d.origin === self.location.origin) destino = d.href; } catch { /* destino invalido: se abre la portada */ } // solo destinos de la propia app
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => { const c = cs[0]; if (c) { c.focus(); return 'navigate' in c ? c.navigate(destino) : undefined; } return self.clients.openWindow(destino); }));
 });
