@@ -1,3 +1,5 @@
+// Antiencuadre: si otra pagina mete Dixiapp en un marco, no se muestra (GitHub Pages no deja poner frame-ancestors).
+if (window.top !== window.self) { document.documentElement.style.display = 'none'; try { window.top.location = window.self.location; } catch { /* sin permiso: queda oculto */ } }
 import './aviso-conexion.js';
 import { datos } from './datos/index.js';
 import { leerMonto, aplicarTema, esc } from './ui.js';
@@ -49,7 +51,7 @@ async function pintar() {
   } catch (e) {
     if (yo !== pintando) return;
     if (/No autorizado|sesión venció/i.test(e.message) && s.usuario) { s.usuario = null; s.acceso = await datos.estadoAcceso(); s.errorPin = 'Vuelva a entrar.'; return pintar(); }
-    s.error = e.message; raiz.innerHTML = `<div class="acceso"><div class="acceso-caja"><p class="error" role="alert">${e.message}</p><button class="btn bloque" data-accion="reintentar">Reintentar</button></div></div>`;
+    s.error = e.message; raiz.innerHTML = `<div class="acceso"><div class="acceso-caja"><p class="error" role="alert">${esc(e.message)}</p><button class="btn bloque" data-accion="reintentar">Reintentar</button></div></div>`;
   }
 }
 

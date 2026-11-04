@@ -7,7 +7,7 @@
     "url": "https://dixiapp.dmalabomba.com",
     "cleartext": false,
     "errorPath": "sin-conexion.html",
-    "allowNavigation": ["dixiapp.dmalabomba.com", "dwlbcbtwdungyrykgahm.supabase.co"]
+    "allowNavigation": ["dixiapp.dmalabomba.com"]
   },
-  "android": { "allowMixedContent": false }
+  "android": { "allowMixedContent": false, "webContentsDebuggingEnabled": false }
 }

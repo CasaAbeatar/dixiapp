@@ -3,5 +3,5 @@
   "appName": "Dixiapp",
   "webDir": "web",
   "backgroundColor": "#ffffff",
-  "android": { "allowMixedContent": false }
+  "android": { "allowMixedContent": false, "webContentsDebuggingEnabled": false }
 }
