@@ -268,24 +268,26 @@ test('bodega: un cajero no llega a las funciones del inventario', async () => {
   assert.equal(cl.llamadas.some((l) => l.publico), false);
 });
 
-test('modo clave de 4 numeros: entra por el servicio de acceso, no guarda nada local y se bloquea', async () => {
+test('modo clave: entra por el servicio de acceso (sin validar el largo en el aparato), guarda solo el token del aparato y se bloquea', async () => {
   const cl = falso(base(ADMIN));
   let sesion = null; const pedidas = [];
   cl.auth.setSession = async ({ access_token }) => { sesion = { user: { id: 'u1' } }; cl.llamadas.push({ setSession: access_token }); return { error: null }; };
   cl.auth.getSession = async () => ({ data: { session: sesion } });
   cl.auth.signOut = async (o) => { sesion = null; cl.llamadas.push({ signOut: o }); return { error: null }; };
-  const respuestas = [{ status: 401, ok: false, j: { ok: false, error: 'Clave incorrecta.' } }, { status: 429, ok: false, j: { ok: false, error: 'Espere 5 segundos e intente de nuevo.' } }, { status: 200, ok: true, j: { ok: true, access_token: 'a', refresh_token: 'r' } }];
+  const respuestas = [{ status: 401, ok: false, j: { ok: false, error: 'Clave incorrecta.' } }, { status: 401, ok: false, j: { ok: false, error: 'Clave incorrecta.' } }, { status: 429, ok: false, j: { ok: false, error: 'Espere 5 segundos e intente de nuevo.' } }, { status: 200, ok: true, j: { ok: true, access_token: 'a', refresh_token: 'r', aparato_token: 'T'.repeat(43) } }];
   const pedir = async (url, o) => { pedidas.push({ url, cuerpo: JSON.parse(o.body), llave: o.headers.apikey }); const r = respuestas.shift(); return { status: r.status, ok: r.ok, json: async () => r.j }; };
   const al = mem();
   const d = crearDatosSupabase({ cliente: cl, almacen: al, modoAcceso: 'pin', urlAcceso: 'https://x/functions/v1/dixi-acceso', llave: 'pub', pedir });
   assert.equal(d.acceso, 'pin'); assert.equal(await d.estadoAcceso(), 'sin_sesion');
-  assert.equal(await d.iniciarSesion({ pin: '12' }), null); assert.equal(pedidas.length, 0);
+  // El largo NO se valida en el aparato: una clave de 2 digitos va al servidor igual que una de 4 (si no, la respuesta instantanea delataria el largo)
+  assert.equal(await d.iniciarSesion({ pin: '12' }), null); assert.equal(pedidas.length, 1);
+  assert.equal(await d.iniciarSesion({ pin: '' }), null); assert.equal(pedidas.length, 1);   // vacio: ni se envia
   assert.equal(await d.iniciarSesion({ pin: '1111' }), null);
   await assert.rejects(() => d.iniciarSesion({ pin: '2222' }), /Espere 5 segundos/);
   const u = await d.iniciarSesion({ pin: '3333' });
   assert.equal(u.rol, 'administrador'); assert.equal(await d.estadoAcceso(), 'abierta');
-  assert.deepEqual(pedidas.map((p) => p.cuerpo), [{ pin: '1111' }, { pin: '2222' }, { pin: '3333' }]); assert.equal(pedidas[0].llave, 'pub');
-  assert.equal(al.m.size, 0);
+  assert.deepEqual(pedidas.map((p) => p.cuerpo), [{ pin: '12', aparato: '' }, { pin: '1111', aparato: '' }, { pin: '2222', aparato: '' }, { pin: '3333', aparato: '' }]); assert.equal(pedidas[0].llave, 'pub');
+  assert.deepEqual([...al.m.keys()], ['dixiapp.aparato']);   // lo unico que se guarda: el token del aparato de confianza (nunca la clave)
   // Sesion permanente: al reabrir la app (instancia nueva, sesion guardada) entra sin pedir la clave otra vez
   const d2 = crearDatosSupabase({ cliente: cl, almacen: al, modoAcceso: 'pin', urlAcceso: 'https://x/functions/v1/dixi-acceso', llave: 'pub', pedir });
   assert.equal(await d2.estadoAcceso(), 'abierta'); assert.equal((await d2.sesionActual()).rol, 'administrador');

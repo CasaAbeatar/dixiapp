@@ -117,14 +117,17 @@ export function crearDatosSupabase({ cliente, almacen = almacenPorDefecto(), aho
     },
     async iniciarSesion({ correo, clave, pin } = {}) {
       if (modoAcceso === 'pin') {
-        if (!/^\d{4}$/.test(String(pin))) return null;
+        // PIN FINAL: no se valida el largo aqui (hacerlo daria una respuesta instantanea distinta y delataria el largo): todo intento va al servidor, que responde igual para cualquier largo.
+        if (!String(pin ?? '')) return null;
         let r, j;
+        const apa = (() => { try { return almacen.getItem('dixiapp.aparato') || ''; } catch { return ''; } })();   // token del aparato de confianza (si el servidor ya entrego uno)
         try {
-          r = await pedir(urlAcceso, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: llave }, body: JSON.stringify({ pin: String(pin) }) });
+          r = await pedir(urlAcceso, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: llave }, body: JSON.stringify({ pin: String(pin).slice(0, 64), aparato: apa }) });
           j = await r.json().catch(() => ({}));
         } catch { throw new Error('Sin conexión con el servidor. Revise el internet e intente de nuevo.'); }
         if (r.status === 401) return null;
         if (!r.ok || !j.ok) throw new Error(j.error || 'No se pudo entrar. Intente de nuevo en unos segundos.');
+        if (typeof j.aparato_token === 'string' && j.aparato_token) { try { almacen.setItem('dixiapp.aparato', j.aparato_token); } catch { /* sin almacenamiento: el ingreso sigue */ } }
         const { error } = await cliente.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
         if (error) throw new Error('No se pudo abrir la sesión. Intente de nuevo.');
         usuarioCache = null; desbloqueado = true;

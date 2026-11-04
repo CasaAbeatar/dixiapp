@@ -327,8 +327,7 @@ raiz.addEventListener('input', (ev) => {
   if (id === 'v-destino' && s.viajeForm) s.viajeForm.destino = ev.target.value;
   if (id === 'v-fecha' && s.viajeForm) s.viajeForm.fecha = ev.target.value;
   if (id === 'a-pin') {
-    s.pin = ev.target.value.replace(/\D/g, '').slice(0, 4); ev.target.value = s.pin; s.errorPin = '';
-    if (s.pin.length === 4) intentarPin();
+    s.pin = ev.target.value.replace(/\D/g, '').slice(0, 32); ev.target.value = s.pin; s.errorPin = '';   // sin largo fijo y sin envio automatico: se envia con Enter o el boton «Entrar»
     return;
   }
   if (id === 'a-correo') s.correo = ev.target.value;
@@ -338,7 +337,7 @@ raiz.addEventListener('change', (ev) => {
   if (ev.target.id === 'f-rubro') { s.filtro.rubro = ev.target.value; s.abierta = null; pintar(); }
 });
 raiz.addEventListener('submit', async (ev) => {
-  if (ev.target.dataset.form === 'pin') { ev.preventDefault(); if (s.pin.length === 4) intentarPin(); return; }
+  if (ev.target.dataset.form === 'pin') { ev.preventDefault(); if (s.pin) intentarPin(); else { s.errorPin = 'Escriba su clave.'; pintar(); } return; }
   if (ev.target.dataset.form !== 'correo') return;
   ev.preventDefault();
   s.correo = document.getElementById('a-correo').value; const clave = document.getElementById('a-clave').value;
