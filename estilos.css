@@ -317,9 +317,9 @@ input[type=date] { width: 100%; min-height: 52px; padding: 10px 14px; background
 body { background:
   radial-gradient(560px 420px at 6% 12%, var(--halo1), transparent 70%),
   radial-gradient(580px 440px at 96% 30%, var(--halo2), transparent 70%),
-  radial-gradient(620px 460px at 50% 98%, var(--halo3), transparent 70%), var(--fondo); background-attachment: fixed; }
-.cabecera { background: var(--vidrio); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-.tarjeta { background: var(--vidrio); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-color: rgba(255,255,255,.7); }
+  radial-gradient(620px 460px at 50% 98%, var(--halo3), transparent 70%), var(--fondo); }
+.cabecera { background: var(--vidrio); }
+.tarjeta { background: var(--vidrio); border-color: rgba(255,255,255,.7); }
 :root[data-tema="oscuro"] .tarjeta { border-color: var(--linea); }
 @media (prefers-color-scheme: dark) { :root:not([data-tema="claro"]) .tarjeta { border-color: var(--linea); } }
 .tarjeta h2 { font-size: 19px; }
