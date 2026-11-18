@@ -14,6 +14,7 @@ import { estadoDiferencia, diferencia } from './datos/calculos.js';
 import { construirBodega, accionBodega, entradaBodega, despuesDePintar, estadoBodega } from './bodega.js';
 import { rangoPorDefecto, rellenarPeriodos, sumarMeses, inicioMes } from './datos/compras-calc.js';
 import { vistaVentas } from './vistas-ventas.js';
+import { vistaSinpe } from './vistas-sinpe.js';
 import { rangoNegocio } from './datos/negocio-calc.js';
 import { precargarTodo } from './datos/precarga.js';
 
@@ -26,7 +27,7 @@ const s = {
   acceso: 'sin_sesion', usuario: null, negocios: [], negocioId: null, pestana: 'Caja', tema: leerLS('dixiapp.tema', 'auto'),
   pin: '', pin1: '', faseCrear: 'nuevo', errorPin: '', correo: '', errorCorreo: '', cargando: false,
   fecha: null, aviso: '', error: '', fondo: '', cierre: null, limite: 7,
-  filtro: { neg: 'ambos', proveedor: '', busca: '', rubro: '', periodo: 'ultimas' }, bodega: estadoBodega(), viaje: null, viajeForm: null, resolviendo: null, notaDif: '', avisoEfectivo: '', por: 'dia', abierta: null, ventasPor: 'dia', filtroVentas: { neg: 'ambos' }, filtroCierres: { neg: 'ambos' }, cierresDias: 30, turnosVer: {}, lineasFac: {}, vivo: false, ultimo: Date.now(), esperado: 0,
+  filtro: { neg: 'ambos', proveedor: '', busca: '', rubro: '', periodo: 'ultimas' }, bodega: estadoBodega(), viaje: null, viajeForm: null, resolviendo: null, notaDif: '', avisoEfectivo: '', por: 'dia', abierta: null, ventasPor: 'dia', filtroVentas: { neg: 'ambos' }, filtroSinpe: { neg: 'ambos' }, filtroCierres: { neg: 'ambos' }, cierresDias: 30, turnosVer: {}, lineasFac: {}, vivo: false, ultimo: Date.now(), esperado: 0,
 };
 aplicarTema(s.tema);
 
@@ -36,8 +37,8 @@ let pintando = 0, enVuelo = 0;
 const FRESCO_MS = 15000; // una copia de hace menos de esto no se vuelve a pedir al volver a una pantalla
 const hoyLocal = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Costa_Rica' });
 const etiquetaDatos = () => ({ esPrueba: datos.esPrueba || !!datos.esEjemploEn?.(s.pestana), etiqueta: datos.esPrueba ? 'Datos de prueba' : s.pestana === 'Inicio' ? 'Caja y ventas de ejemplo' : s.pestana === 'Ventas' ? 'Ejemplo, salvo «Cómo se mueve tu negocio»' : 'Datos de ejemplo' });
-const TITULOS = { Inicio: 'Inicio', Cierres: 'Cierres de caja', Ventas: 'Ventas', Compras: 'Compras', Bodega: 'Bodega' };
-const CARGANDO = { Inicio: 'tus números', Caja: 'la caja', Ventas: 'las ventas', Compras: 'las compras', Bodega: 'la bodega', Cierres: 'los cierres de caja', Más: 'las opciones' };
+const TITULOS = { SINPE: 'SINPE Móvil', Inicio: 'Inicio', Cierres: 'Cierres de caja', Ventas: 'Ventas', Compras: 'Compras', Bodega: 'Bodega' };
+const CARGANDO = { SINPE: 'los SINPE Móvil', Inicio: 'tus números', Caja: 'la caja', Ventas: 'las ventas', Compras: 'las compras', Bodega: 'la bodega', Cierres: 'los cierres de caja', Más: 'las opciones' };
 
 // Saludo inmediato del Inicio mientras llegan los numeros
 function inicioRapido() {
@@ -116,6 +117,8 @@ async function construir(D = datos, previa = false) {
     const [caja, act] = await Promise.all([D.cajaActual(s.negocioId), D.actividad(s.negocioId, s.fecha)]);
     s.esperado = caja?.esperado ?? 0;
     contenido = selectorNegocio(s.negocios, s.negocioId) + vistaCaja({ hoy, fecha: s.fecha, caja, act, esAdmin: esAdmin(), aviso: s.aviso, error: s.error, fondo: s.fondo, cierre: s.cierre });
+  } else if (s.pestana === 'SINPE' && esAdmin()) {
+    contenido = await construirSinpe(D); titulo = { nombre: 'SINPE Móvil' };
   } else if (s.pestana === 'Cierres' && esAdmin()) {
     contenido = await construirCierres(D, hoy); titulo = { nombre: 'Cierres de caja' };
   } else if (s.pestana === 'Ventas' && esAdmin()) {
@@ -130,7 +133,7 @@ async function construir(D = datos, previa = false) {
     titulo = s.negocios.find((n) => n.id === s.negocioId);
   }
   if (!previa) s.error = '';
-  return marco({ negocio: titulo, hoy, pestana: s.pestana, pestanas: pestanasDe(), contenido, ...etiquetaDatos() });
+  return marco({ negocio: titulo, hoy, pestana: s.pestana === 'SINPE' ? 'Inicio' : s.pestana, pestanas: pestanasDe(), contenido, ...etiquetaDatos() });
 }
 
 async function construirInicio(D, hoy) {
@@ -140,10 +143,12 @@ async function construirInicio(D, hoy) {
     return { id: n.id, nombre: n.nombre, caja, movs: act.movimientos.length };
   }));
   const nombreNeg = (id) => s.negocios.find((n) => n.id === id)?.nombre || id;
+  const sinpeInicio = D.sinpeConsulta({ negocios: null, dias: 7 }).catch(() => null); // solo consulta: si falla, la tarjeta simplemente no sale
   const [negocios, alertas, compras, difs, viajes, movs] = await Promise.all([pNegocios,
     D.bodegaAlertas().catch(() => ({ bajoMinimo: [] })), D.comprasResumen({ negocios: null }).catch(() => ({ semana: { facturas: 0, total: 0 } })),
     D.diferenciasPendientes().catch(() => []), D.viajes().catch(() => []), D.movimientosRecientes({ limite: 6 }).catch(() => []),
   ]);
+  const sinpe = await sinpeInicio;
   s.viaje = viajes[0] && viajes[0].fecha >= hoy ? viajes[0] : null;
   const decisiones = [];
   const porUbic = new Map();
@@ -156,7 +161,14 @@ async function construirInicio(D, hoy) {
         <div class="ini-fila-b"><button class="ini-link" data-accion="dif-cancelar">Cancelar</button><button class="ini-btn" data-accion="dif-resolver" data-valor="${esc(String(c.cajaId))}">Marcar como resuelta</button></div></div>` : '' });
   }
   const h = new Date().getHours();
-  return vistaInicio({ saludo: h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches', mensaje: mensajeDelDia().texto, negocios, decisiones, semana: compras.semana, viaje: s.viaje, viajeForm: s.viajeForm, movimientos: movs.map((m) => ({ ...m, negocio: nombreNeg(m.negocioId) })), aviso: s.avisoEfectivo, hoy });
+  return vistaInicio({ saludo: h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches', mensaje: mensajeDelDia().texto, negocios, decisiones, semana: compras.semana, viaje: s.viaje, viajeForm: s.viajeForm, movimientos: movs.map((m) => ({ ...m, negocio: nombreNeg(m.negocioId) })), aviso: s.avisoEfectivo, hoy, sinpe });
+}
+
+async function construirSinpe(D) {
+  const negs = s.filtroSinpe.neg === 'ambos' ? null : [s.filtroSinpe.neg];
+  const d = await D.sinpeConsulta({ negocios: negs, dias: 30 });
+  const ahoraTexto = new Date().toLocaleTimeString('es-CR', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  return vistaSinpe({ datos: d, negociosPermitidos: s.negocios, filtro: s.filtroSinpe, error: s.error, ahoraTexto });
 }
 
 async function construirCierres(D, hoy) {
@@ -351,6 +363,10 @@ raiz.addEventListener('click', async (ev) => {
     if (a === 'cierres-negocio') { s.filtroCierres.neg = v; s.turnosVer = {}; return pintar({ rapido: true }); }
     if (a === 'cierres-mas') { s.cierresDias += 30; return pintar({ rapido: true }); }
     if (a === 'turno-ver') { s.turnosVer = { ...s.turnosVer, [v]: !s.turnosVer[v] }; return pintar({ rapido: true }); }
+    // SINPE Movil (solo consulta)
+    if (a === 'ir-sinpe') { s.pestana = 'SINPE'; resaltarPestana('Inicio'); return pintar({ rapido: true, pantalla: true, arriba: true }); }
+    if (a === 'sinpe-negocio') { s.filtroSinpe.neg = v; return pintar({ rapido: true }); }
+    if (a === 'sinpe-actualizar') return pintar({ arriba: false });
     // Ventas
     if (a === 'ventas-negocio') { s.filtroVentas.neg = v; return pintar({ rapido: true }); }
     if (a === 'ventas-por') { s.ventasPor = v; return pintar({ rapido: true }); }
@@ -455,7 +471,7 @@ async function cerrar(confirmar) {
 async function iniciar() {
   mostrarSplash();
   try { await evaluarAcceso(); } catch (e) { s.errorPin = e.message; }
-  const destino = { '#ventas': 'Ventas', '#cierres': 'Cierres', '#bodega': 'Bodega', '#compras': 'Compras' }[location.hash]; // al tocar un aviso se abre la pantalla que corresponde
+  const destino = { '#ventas': 'Ventas', '#cierres': 'Cierres', '#bodega': 'Bodega', '#compras': 'Compras', '#sinpe': 'SINPE' }[location.hash]; // al tocar un aviso se abre la pantalla que corresponde
   if (destino && s.usuario && esAdmin()) s.pestana = destino;
   await pintar({ rapido: true, pantalla: true });
 }
