@@ -572,3 +572,26 @@ body {
   .sp-fila .sp-q { grid-area: q; } .sp-fila .sp-m { grid-area: m; } .sp-fila .sp-h { grid-area: h; color: var(--suave); } .sp-fila .sp-d { grid-area: d; text-align: right; } .sp-fila .sp-c { grid-area: c; white-space: normal; overflow-wrap: anywhere; }
 }
 .ini-sp-tot { display: grid; gap: 2px; padding: 2px 0 8px; } .ini-sp-tot b { font-size: 32px; font-weight: 600; letter-spacing: -.02em; } .ini-sp-tot small { color: var(--suave); }
+
+/* Pestana Pagos: lista simple, el mas reciente arriba */
+.pg-lista { padding-top: 4px; }
+.pg-fila { display: grid; grid-template-columns: 6.6em minmax(0, 1fr) auto; gap: 4px 14px; align-items: baseline; padding: 14px 0; border-top: 1px solid var(--linea); font-size: 17px; }
+.pg-hora { color: var(--suave); white-space: nowrap; }
+.pg-q b { font-weight: 600; overflow-wrap: anywhere; } .pg-q small { display: block; margin-top: 2px; font-size: 14px; color: var(--suave); overflow-wrap: anywhere; }
+.pg-m { text-align: right; font-weight: 600; white-space: nowrap; }
+.pg-lista .sp-dia:first-child { margin-top: 12px; }
+@media (max-width: 560px) { .pg-fila { grid-template-columns: 5.4em minmax(0, 1fr) auto; gap: 4px 8px; font-size: 16px; } .pg-hora { font-size: 14px; } }
+
+/* Montos simetricos: el ₡ en su propia columna fija y las cifras alineadas a la derecha con numeros de ancho igual */
+.mon { display: inline-grid; grid-template-columns: 1em 6.3ch; align-items: baseline; column-gap: 1px; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+.mon .crc { text-align: left; } .mon .cif { text-align: right; }
+.pg-resumen { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 22px; margin: 10px 0 12px; padding: 12px 14px; border: 1px solid var(--linea); border-radius: 12px; background: var(--superficie); font-size: 17px; }
+.pg-resumen small { color: var(--suave); font-size: 14px; } .pg-resumen .pg-aviso { color: var(--suave); margin-left: auto; font-size: 15px; } .pg-resumen .pg-aviso b { color: var(--texto); font-weight: 600; }
+.pg-sub { display: inline-flex; gap: 10px; align-items: baseline; }
+
+/* Barra inferior: 5 botones grandes; el resto de secciones vive en Más como mosaico */
+.pestanas .pestana, .pestana { font-size: 17px !important; min-height: 60px; padding: 0 2px; letter-spacing: 0; font-weight: 600; white-space: nowrap; }
+.mosaico { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 8px; }
+.mosaico-b { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; min-height: 92px; padding: 14px 16px; text-align: left; background: var(--superficie); border: 1px solid var(--linea); border-radius: 16px; color: var(--texto); }
+.mosaico-b b { font-size: 21px; font-weight: 600; }
+.mosaico-b span { font-size: 15px; color: var(--suave); }

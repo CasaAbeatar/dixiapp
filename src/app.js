@@ -14,7 +14,7 @@ import { estadoDiferencia, diferencia } from './datos/calculos.js';
 import { construirBodega, accionBodega, entradaBodega, despuesDePintar, estadoBodega } from './bodega.js';
 import { rangoPorDefecto, rellenarPeriodos, sumarMeses, inicioMes } from './datos/compras-calc.js';
 import { vistaVentas } from './vistas-ventas.js';
-import { vistaSinpe } from './vistas-sinpe.js';
+import { vistaSinpe, vistaPagos } from './vistas-sinpe.js';
 import { rangoNegocio } from './datos/negocio-calc.js';
 import { precargarTodo } from './datos/precarga.js';
 
@@ -32,13 +32,13 @@ const s = {
 aplicarTema(s.tema);
 
 const esAdmin = () => s.usuario?.rol === 'administrador';
-const pestanasDe = () => (esAdmin() ? ['Inicio', 'Caja', 'Ventas', 'Compras', 'Bodega', 'Cierres', 'Más'] : ['Caja', 'Más']);
+const pestanasDe = () => (esAdmin() ? ['Inicio', 'Pagos', 'Caja', 'Ventas', 'Más'] : ['Caja', 'Más']);
 let pintando = 0, enVuelo = 0;
 const FRESCO_MS = 15000; // una copia de hace menos de esto no se vuelve a pedir al volver a una pantalla
 const hoyLocal = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Costa_Rica' });
 const etiquetaDatos = () => ({ esPrueba: datos.esPrueba || !!datos.esEjemploEn?.(s.pestana), etiqueta: datos.esPrueba ? 'Datos de prueba' : s.pestana === 'Inicio' ? 'Caja y ventas de ejemplo' : s.pestana === 'Ventas' ? 'Ejemplo, salvo «Cómo se mueve tu negocio»' : 'Datos de ejemplo' });
-const TITULOS = { SINPE: 'SINPE Móvil', Inicio: 'Inicio', Cierres: 'Cierres de caja', Ventas: 'Ventas', Compras: 'Compras', Bodega: 'Bodega' };
-const CARGANDO = { SINPE: 'los SINPE Móvil', Inicio: 'tus números', Caja: 'la caja', Ventas: 'las ventas', Compras: 'las compras', Bodega: 'la bodega', Cierres: 'los cierres de caja', Más: 'las opciones' };
+const TITULOS = { SINPE: 'SINPE Móvil', Pagos: 'Pagos', Inicio: 'Inicio', Cierres: 'Cierres de caja', Ventas: 'Ventas', Compras: 'Compras', Bodega: 'Bodega' };
+const CARGANDO = { SINPE: 'los SINPE Móvil', Pagos: 'los pagos', Inicio: 'tus números', Caja: 'la caja', Ventas: 'las ventas', Compras: 'las compras', Bodega: 'la bodega', Cierres: 'los cierres de caja', Más: 'las opciones' };
 
 // Saludo inmediato del Inicio mientras llegan los numeros
 function inicioRapido() {
@@ -119,6 +119,8 @@ async function construir(D = datos, previa = false) {
     contenido = selectorNegocio(s.negocios, s.negocioId) + vistaCaja({ hoy, fecha: s.fecha, caja, act, esAdmin: esAdmin(), aviso: s.aviso, error: s.error, fondo: s.fondo, cierre: s.cierre });
   } else if (s.pestana === 'SINPE' && esAdmin()) {
     contenido = await construirSinpe(D); titulo = { nombre: 'SINPE Móvil' };
+  } else if (s.pestana === 'Pagos' && esAdmin()) {
+    contenido = await construirPagos(D); titulo = { nombre: 'Pagos' };
   } else if (s.pestana === 'Cierres' && esAdmin()) {
     contenido = await construirCierres(D, hoy); titulo = { nombre: 'Cierres de caja' };
   } else if (s.pestana === 'Ventas' && esAdmin()) {
@@ -162,6 +164,13 @@ async function construirInicio(D, hoy) {
   }
   const h = new Date().getHours();
   return vistaInicio({ saludo: h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches', mensaje: mensajeDelDia().texto, negocios, decisiones, semana: compras.semana, viaje: s.viaje, viajeForm: s.viajeForm, movimientos: movs.map((m) => ({ ...m, negocio: nombreNeg(m.negocioId) })), aviso: s.avisoEfectivo, hoy, sinpe });
+}
+
+async function construirPagos(D) {
+  const negs = s.filtroSinpe.neg === 'ambos' ? null : [s.filtroSinpe.neg];
+  const d = await D.sinpeConsulta({ negocios: negs, dias: 30 });
+  const ahoraTexto = new Date().toLocaleTimeString('es-CR', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  return vistaPagos({ datos: d, negociosPermitidos: s.negocios, filtro: s.filtroSinpe, vivo: s.vivoPagos, error: s.error, ahoraTexto });
 }
 
 async function construirSinpe(D) {
@@ -235,7 +244,7 @@ async function entrarConUsuario(u) {
   const guardado = leerLS('dixiapp.negocio', '');
   s.negocioId = s.negocios.some((n) => n.id === guardado) ? guardado : s.negocios[0].id;
   s.inicioListo = false; s.bodega = estadoBodega(); s.pestana = esAdmin() ? 'Inicio' : 'Caja'; s.fecha = null; s.pin = ''; s.pin1 = ''; s.errorPin = ''; s.cierre = null; s.aviso = ''; s.error = '';
-  suscribirCompras(); suscribirEfectivo(); suscribirVentas();
+  suscribirCompras(); suscribirEfectivo(); suscribirVentas(); pulsarPagos();
   if (esAdmin()) setTimeout(async () => { try { await precargarTodo(datos, { hoy: await datos.hoy(), ceder: cederAlUsuario }); } catch { /* la copia local es un extra: nunca estorba */ } }, 4000);
 }
 
@@ -268,6 +277,15 @@ async function suscribirCompras() {
       }, 300);
     });
   } catch { /* sin tiempo real: la vista sigue funcionando al abrirla */ }
+}
+
+// Pestana Pagos: se vuelve a leer sola cada 20 segundos mientras esta abierta y la app se ve (los SINPE nuevos aparecen arriba)
+let pulsoPagos = null;
+function pulsarPagos() {
+  if (pulsoPagos) return;
+  pulsoPagos = setInterval(async () => {
+    if (s.usuario && s.pestana === 'Pagos' && !document.hidden && esAdmin()) { s.vivoPagos = true; await pintar({ pasivo: true }); setTimeout(() => { s.vivoPagos = false; }, 4000); }
+  }, 20000);
 }
 
 let cancelarVentas = null;
@@ -477,4 +495,13 @@ async function iniciar() {
 }
 iniciar();
 if (datos.esPrueba) window.dixiPrueba = datos; // solo para pruebas automaticas en modo de prueba
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  // Actualizacion automatica: busca version nueva al abrir y cada vez que vuelves a la app, y se recarga sola una vez cuando llega
+  const habia = !!navigator.serviceWorker.controller; let recargada = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (habia && !recargada) { recargada = true; location.reload(); } });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+    const buscar = () => reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') buscar(); });
+    setInterval(buscar, 10 * 60 * 1000);
+  }).catch(() => {});
+}
