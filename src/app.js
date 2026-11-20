@@ -35,16 +35,31 @@ const esAdmin = () => s.usuario?.rol === 'administrador';
 const pestanasDe = () => (esAdmin() ? ['Inicio', 'Pagos', 'Caja', 'Ventas', 'Más'] : ['Caja', 'Más']);
 let pintando = 0, enVuelo = 0;
 const FRESCO_MS = 15000; // una copia de hace menos de esto no se vuelve a pedir al volver a una pantalla
-const hoyLocal = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Costa_Rica' });
-const etiquetaDatos = () => ({ esPrueba: datos.esPrueba || !!datos.esEjemploEn?.(s.pestana), etiqueta: datos.esPrueba ? 'Datos de prueba' : s.pestana === 'Inicio' ? 'Caja y ventas de ejemplo' : s.pestana === 'Ventas' ? 'Ejemplo, salvo «Cómo se mueve tu negocio»' : 'Datos de ejemplo' });
+const ZONA = 'America/Costa_Rica';
+const hoyLocal = () => new Date().toLocaleDateString('en-CA', { timeZone: ZONA });
+// Hora de Costa Rica (no la del aparato): saludos y «Última lectura» no cambian si el teléfono está en otra zona o con la hora mal puesta
+const horaCR24 = () => Number(new Intl.DateTimeFormat('en-GB', { timeZone: ZONA, hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+const saludoDeHora = () => { const h = horaCR24(); return h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches'; };
+const ahoraCR = () => new Date().toLocaleTimeString('es-CR', { timeZone: ZONA, hour: 'numeric', minute: '2-digit', second: '2-digit' });
+// Mientras Caja, Ventas y parte de Inicio muestran datos de EJEMPLO: etiqueta corta arriba y una franja que lo dice con palabras y aclara qué sí es real
+const FRANJAS = {
+  Inicio: 'Ejemplo: el efectivo de las cajas, el efectivo de hoy y las diferencias. Real: SINPE Móvil, compras y bodega.',
+  Caja: 'Esta caja es de ejemplo, no es la del local. Lo real está en Pagos, Compras y Bodega.',
+  Ventas: 'Las ventas de hoy y los gráficos son de ejemplo. Real: «Cómo se mueve tu negocio».',
+  Cierres: 'Estos turnos son de ejemplo: todavía no hay cierres reales del facturador.',
+};
+const etiquetaDatos = () => {
+  const ejemplo = !datos.esPrueba && !!datos.esEjemploEn?.(s.pestana);
+  return { esPrueba: datos.esPrueba || ejemplo, etiqueta: datos.esPrueba ? 'Datos de prueba' : s.pestana === 'Inicio' ? 'Caja y ventas de ejemplo' : s.pestana === 'Ventas' ? 'Ventas de ejemplo' : 'Datos de ejemplo',
+    franja: datos.esPrueba ? 'Modo de prueba: todos los datos son ficticios.' : ejemplo ? (FRANJAS[s.pestana] || 'Cifras de ejemplo, no son las reales del local.') : '' };
+};
 const TITULOS = { SINPE: 'SINPE Móvil', Pagos: 'Pagos', Inicio: 'Inicio', Cierres: 'Cierres de caja', Ventas: 'Ventas', Compras: 'Compras', Bodega: 'Bodega' };
 const CARGANDO = { SINPE: 'los SINPE Móvil', Pagos: 'los pagos', Inicio: 'tus números', Caja: 'la caja', Ventas: 'las ventas', Compras: 'las compras', Bodega: 'la bodega', Cierres: 'los cierres de caja', Más: 'las opciones' };
 
 // Saludo inmediato del Inicio mientras llegan los numeros
 function inicioRapido() {
-  const hh = new Date().getHours();
   return marco({ negocio: { nombre: 'Inicio' }, hoy: hoyLocal(), pestana: 'Inicio', pestanas: pestanasDe(), ...etiquetaDatos(),
-    contenido: `<section class="ini"><h2 class="ini-h">${hh < 12 ? 'Buenos días' : hh < 19 ? 'Buenas tardes' : 'Buenas noches'}, Dixia</h2><p class="ini-msg">${esc(mensajeDelDia().texto)}</p><p class="ini-vacio">Cargando tus números…</p></section>` });
+    contenido: `<section class="ini"><h2 class="ini-h">${saludoDeHora()}, Dixia</h2><p class="ini-msg">${esc(mensajeDelDia().texto)}</p><p class="ini-vacio">Cargando tus números…</p></section>` });
 }
 // Marco con las pestanas ya puestas y un esqueleto: sirve cuando todavia no hay copia de la pantalla (primera vez)
 function marcoEsqueleto() {
@@ -101,9 +116,20 @@ async function pintar({ rapido = false, pantalla = false, arriba = false, pasivo
     if (yo !== pintando) return;
     indicador(false);
     if (/No autorizado|sesión venció/i.test(e.message) && s.usuario) { s.usuario = null; s.acceso = await datos.estadoAcceso(); s.errorPin = 'Vuelva a entrar.'; return pintar(); }
-    s.error = e.message; raiz.innerHTML = `<div class="acceso"><div class="acceso-caja"><p class="error" role="alert">${esc(e.message)}</p><button class="btn bloque" data-accion="reintentar">Reintentar</button></div></div>`;
+    console.warn('Dixiapp: no se pudo actualizar la pantalla:', e && e.message);
+    if (pasivo && raiz.querySelector('.pestanas')) return; // una lectura de fondo que falla no tumba lo que ya se ve (y no deja un error pendiente para la próxima pintura)
+    s.error = mensajeAmable(e && e.message);
+    if (s.usuario) {
+      // Con sesión: se conserva la barra de botones y el encabezado; solo el contenido avisa y ofrece reintentar
+      raiz.innerHTML = marco({ negocio: { nombre: (TITULOS[s.pestana] && esAdmin() ? TITULOS[s.pestana] : s.negocios.find((n) => n.id === s.negocioId)?.nombre) || 'Dixiapp' }, hoy: s.fecha || hoyLocal(), pestana: s.pestana === 'SINPE' ? 'Inicio' : s.pestana, pestanas: pestanasDe(), ...etiquetaDatos(),
+        contenido: `<p class="error" role="alert">${esc(s.error)}</p><button class="btn bloque" data-accion="reintentar">Reintentar</button>` });
+    } else raiz.innerHTML = `<div class="acceso"><div class="acceso-caja"><p class="error" role="alert">${esc(s.error)}</p><button class="btn bloque" data-accion="reintentar">Reintentar</button></div></div>`;
   }
 }
+
+// Los mensajes ya redactados para Dixia se muestran tal cual; un texto técnico de la base («boom interno») solo va a la consola
+const AMABLES = /^(No tiene permiso|Sin conexión|La sesión venció|Su cuenta no tiene|Correo o contraseña|Ya hay una caja|Ese movimiento|Escriba|Ocurrió un error)/;
+const mensajeAmable = (m) => (AMABLES.test(String(m || '')) ? m : 'No se pudo actualizar. Intente de nuevo en unos segundos.');
 
 // D = de donde salen los datos: `datos` (red, con copia de respaldo) o la copia guardada sola (vista previa instantanea). `previa` = no gasta avisos ni errores.
 async function construir(D = datos, previa = false) {
@@ -162,21 +188,21 @@ async function construirInicio(D, hoy) {
       extra: abierta ? `<div class="ini-resolver"><label>¿Qué pasó? <small>(opcional)</small><input id="d-nota" type="text" maxlength="300" autocomplete="off" value="${esc(s.notaDif)}" placeholder="Por ejemplo, se pagó un gas sin anotar"></label>
         <div class="ini-fila-b"><button class="ini-link" data-accion="dif-cancelar">Cancelar</button><button class="ini-btn" data-accion="dif-resolver" data-valor="${esc(String(c.cajaId))}">Marcar como resuelta</button></div></div>` : '' });
   }
-  const h = new Date().getHours();
-  return vistaInicio({ saludo: h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches', mensaje: mensajeDelDia().texto, negocios, decisiones, semana: compras.semana, viaje: s.viaje, viajeForm: s.viajeForm, movimientos: movs.map((m) => ({ ...m, negocio: nombreNeg(m.negocioId) })), aviso: s.avisoEfectivo, hoy, sinpe });
+  return vistaInicio({ saludo: saludoDeHora(), mensaje: mensajeDelDia().texto, negocios, decisiones, semana: compras.semana, viaje: s.viaje, viajeForm: s.viajeForm, movimientos: movs.map((m) => ({ ...m, negocio: nombreNeg(m.negocioId) })), aviso: s.avisoEfectivo, hoy, sinpe, ejemplo: !datos.esPrueba && !!datos.esEjemploEn?.('Inicio') });
 }
 
+const leerSinpe = (D, negs) => D.sinpeConsulta({ negocios: negs, dias: 30 });
 async function construirPagos(D) {
   const negs = s.filtroSinpe.neg === 'ambos' ? null : [s.filtroSinpe.neg];
-  const d = await D.sinpeConsulta({ negocios: negs, dias: 30 });
-  const ahoraTexto = new Date().toLocaleTimeString('es-CR', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
-  return vistaPagos({ datos: d, negociosPermitidos: s.negocios, filtro: s.filtroSinpe, vivo: s.vivoPagos, error: s.error, ahoraTexto });
+  const d = await leerSinpe(D, negs);
+  const ahoraTexto = ahoraCR();
+  return vistaPagos({ datos: d, negociosPermitidos: s.negocios, filtro: s.filtroSinpe, vivo: s.vivoPagos, error: s.error, ahoraTexto, sinConexion: !!datos.copia?.sinConexion });
 }
 
 async function construirSinpe(D) {
   const negs = s.filtroSinpe.neg === 'ambos' ? null : [s.filtroSinpe.neg];
-  const d = await D.sinpeConsulta({ negocios: negs, dias: 30 });
-  const ahoraTexto = new Date().toLocaleTimeString('es-CR', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  const d = await leerSinpe(D, negs);
+  const ahoraTexto = ahoraCR();
   return vistaSinpe({ datos: d, negociosPermitidos: s.negocios, filtro: s.filtroSinpe, error: s.error, ahoraTexto });
 }
 
@@ -197,7 +223,7 @@ async function construirVentas(D, hoy) {
     D.ventasTop({ negocios: negs, ...rangoTop, limite: 5 }).catch(() => null), D.ventasPorHora({ negocios: negs, fecha: hoy }).catch(() => null),
     D.ventasComercial({ negocios: negs, ...rangoNeg }).catch(() => null), D.ventasCombos({ negocios: negs, ...rangoNeg, limite: 5 }).catch(() => null), D.ventasClientes({ negocios: negs, ...rangoNeg }).catch(() => null),
   ]);
-  const ahoraTexto = new Date().toLocaleTimeString('es-CR', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  const ahoraTexto = ahoraCR();
   return vistaVentas({ negociosPermitidos: s.negocios, filtro: s.filtroVentas, vivo: s.vivoVentas, en_vivo: enVivo, por: s.ventasPor,
     grafico: rellenarPeriodos(serie, s.ventasPor, rango.desde, rango.hasta), meses: rellenarPeriodos(meses, 'mes', rangoMes.desde, rangoMes.hasta), error: s.error, ahoraTexto, top, topPor, horasDia, hoy, negocio: { comercial, combos, clientes }, negocioPor });
 }
@@ -229,7 +255,7 @@ async function construirCompras(D, hoy) {
 
 function vistaAccesoActual() {
   const nota = datos.esPrueba ? '<b>Modo de prueba, datos ficticios.</b><br>PIN del administrador: 1234. PIN del cajero: 4321.' : '';
-  if (datos.acceso === 'pin' && !datos.esPrueba) { const h = new Date().getHours(); return vistaEntrada({ saludo: h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches', pin: s.pin, error: s.errorPin }); }
+  if (datos.acceso === 'pin' && !datos.esPrueba) { return vistaEntrada({ saludo: saludoDeHora(), pin: s.pin, error: s.errorPin }); }
   if (datos.acceso === 'pin') return vistaPin({ titulo: datos.esPrueba ? 'Dixiapp' : 'Dixia', ayuda: datos.esPrueba ? 'Escriba su PIN de 4 a 6 dígitos' : 'Escriba su clave de 4 números', pin: s.pin, error: s.errorPin, nota });
   if (s.acceso === 'sin_sesion') return vistaCorreo({ correo: s.correo, error: s.errorCorreo, cargando: s.cargando });
   const enlace = '<button class="enlace" style="margin-top:6px" data-accion="otra-cuenta">Entrar con otro correo</button>';
@@ -284,7 +310,7 @@ let pulsoPagos = null;
 function pulsarPagos() {
   if (pulsoPagos) return;
   pulsoPagos = setInterval(async () => {
-    if (s.usuario && s.pestana === 'Pagos' && !document.hidden && esAdmin()) { s.vivoPagos = true; await pintar({ pasivo: true }); setTimeout(() => { s.vivoPagos = false; }, 4000); }
+    if (s.usuario && s.pestana === 'Pagos' && !document.hidden && esAdmin()) { s.vivoPagos = true; await pintar({ pasivo: true }); setTimeout(() => { s.vivoPagos = false; const el = document.querySelector('[data-id="pagos-vivo"]'); if (el && !datos.copia?.sinConexion) { el.classList.remove('on'); el.textContent = 'Se actualiza sola'; } }, 4000); }
   }, 20000);
 }
 
@@ -334,7 +360,7 @@ function actualizarDif() {
   salida.className = 'num ' + (d < 0 ? 'mal' : 'ok');
 }
 
-const sumarDiasTexto = (t, n) => { const d = new Date(`${t}T12:00:00`); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
+const sumarDiasTexto = sumarDias; // texto AAAA-MM-DD sin zona horaria (la fecha de «hoy» ya sale de la hora de Costa Rica)
 
 raiz.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-accion]'); if (!el) return;
@@ -498,7 +524,12 @@ if (datos.esPrueba) window.dixiPrueba = datos; // solo para pruebas automaticas 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // Actualizacion automatica: busca version nueva al abrir y cada vez que vuelves a la app, y se recarga sola una vez cuando llega
   const habia = !!navigator.serviceWorker.controller; let recargada = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (habia && !recargada) { recargada = true; location.reload(); } });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!habia || recargada) return;
+    recargada = true;
+    // Si Dixia está escribiendo, la recarga espera a que suelte el campo (no se pierde lo tecleado)
+    if (escribiendo()) { const ir = () => setTimeout(() => location.reload(), 300); raiz.addEventListener('focusout', ir, { once: true }); } else location.reload();
+  });
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
     const buscar = () => reg.update().catch(() => {});
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') buscar(); });

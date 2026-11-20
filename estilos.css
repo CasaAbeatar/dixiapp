@@ -595,3 +595,21 @@ body {
 .mosaico-b { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; min-height: 92px; padding: 14px 16px; text-align: left; background: var(--superficie); border: 1px solid var(--linea); border-radius: 16px; color: var(--texto); }
 .mosaico-b b { font-size: 21px; font-weight: 600; }
 .mosaico-b span { font-size: 15px; color: var(--suave); }
+
+/* ---------- Correcciones de la auditoría (19 nov 2026) ---------- */
+/* Etiqueta de ejemplo: no empuja el ancho en teléfonos de 320 a 375 px (antes provocaba desplazamiento horizontal) */
+.cabecera-in > div:first-child { min-width: 0; }
+.cabecera-in .marca { white-space: normal; }
+.etiqueta-prueba { flex: 0 1 auto; min-width: 0; max-width: 42vw; overflow-wrap: anywhere; }
+/* Franja inequívoca cuando una pantalla muestra cifras de ejemplo */
+.franja-ejemplo { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 14px; padding: 10px 14px; background: #F9EBC8; color: #4B3A10; border: 1px solid #D9A21B; border-radius: 12px; font-size: 15px; line-height: 1.35; }
+.franja-ejemplo b { flex: none; margin-top: 1px; padding: 1px 9px; background: #B81622; color: #FFFFFF; border-radius: 6px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.franja-ejemplo span { min-width: 0; overflow-wrap: anywhere; }
+.ini-ej { position: relative; }
+.ini-ej::before { content: attr(data-ej); position: absolute; top: -11px; right: 14px; z-index: 1; padding: 0 10px; background: #F9EBC8; color: #7A4E00; border: 1px solid #D9A21B; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.ini-kpis.ini-ej { margin-top: 16px; }
+.ini-c.ini-ej { border-style: dashed; border-color: #D9A21B; }
+/* ₡ siempre en la misma columna: la columna de cifras se mide en em (no en ch), así no depende del grosor de la letra ni de dónde se pinte */
+.mon { grid-template-columns: 1em minmax(4em, max-content); }
+.pg-lista .mon { font-size: 16px; }
+.pg-corte { margin: 4px 0 0; } .pg-recorte { margin-top: 14px; }
